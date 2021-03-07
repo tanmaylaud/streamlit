@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """Server.py unit tests"""
-
+import os
 from unittest import mock
 from unittest.mock import MagicMock, patch
 import unittest
@@ -26,14 +26,14 @@ import errno
 from tornado import gen
 
 import streamlit.server.server
-from streamlit import config
+from streamlit import config, RootContainer
+from streamlit.cursor import make_delta_path
 from streamlit.report_session import ReportSession
-from streamlit.uploaded_file_manager import UploadedFile
+from streamlit.uploaded_file_manager import UploadedFileRec
 from streamlit.server.server import MAX_PORT_SEARCH_RETRIES
 from streamlit.forward_msg_cache import ForwardMsgCache
 from streamlit.forward_msg_cache import populate_hash_if_needed
-from streamlit.elements import data_frame_proto
-from streamlit.proto.BlockPath_pb2 import BlockPath
+from streamlit.elements import data_frame
 from streamlit.proto.ForwardMsg_pb2 import ForwardMsg
 from streamlit.server.server import State
 from streamlit.server.server import start_listening
@@ -52,15 +52,14 @@ from streamlit.logger import get_logger
 LOGGER = get_logger(__name__)
 
 
-def _create_dataframe_msg(df, id=1):
+def _create_dataframe_msg(df, id=1) -> ForwardMsg:
     msg = ForwardMsg()
-    msg.metadata.delta_id = id
-    msg.metadata.parent_block.container = BlockPath.SIDEBAR
-    data_frame_proto.marshall_data_frame(df, msg.delta.new_element.data_frame)
+    msg.metadata.delta_path[:] = make_delta_path(RootContainer.SIDEBAR, (), id)
+    data_frame.marshall_data_frame(df, msg.delta.new_element.data_frame)
     return msg
 
 
-def _create_report_finished_msg(status):
+def _create_report_finished_msg(status) -> ForwardMsg:
     msg = ForwardMsg()
     msg.report_finished = status
     return msg
@@ -133,7 +132,8 @@ class ServerTest(ServerTestCase):
             session_infos = list(self.server._session_info_by_id.values())
             self.assertEqual(2, len(session_infos))
             self.assertNotEqual(
-                session_infos[0].session.id, session_infos[1].session.id,
+                session_infos[0].session.id,
+                session_infos[1].session.id,
             )
 
             # Close the first
@@ -199,7 +199,7 @@ class ServerTest(ServerTestCase):
     @tornado.testing.gen_test
     def test_forwardmsg_cacheable_flag(self):
         """Test that the metadata.cacheable flag is set properly on outgoing
-         ForwardMsgs."""
+        ForwardMsgs."""
         with self._patch_report_session():
             yield self.start_server_loop()
 
@@ -314,39 +314,6 @@ class ServerTest(ServerTestCase):
             self.assertFalse(is_data_msg_cached())
 
     @tornado.testing.gen_test
-    def test_uploaded_file_triggers_rerun(self):
-        """Uploading a file should trigger a re-run in the associated
-        ReportSession."""
-        with self._patch_report_session():
-            yield self.start_server_loop()
-
-            # Connect twice and get associated ReportSessions
-            yield self.ws_connect()
-            yield self.ws_connect()
-            session_info1 = list(self.server._session_info_by_id.values())[0]
-            session_info2 = list(self.server._session_info_by_id.values())[1]
-
-            file = UploadedFile("file.txt", b"123")
-
-            # "Upload a file" for Session1
-            self.server._uploaded_file_mgr.add_files(
-                session_id=session_info1.session.id,
-                widget_id="widget_id",
-                files=[file],
-            )
-
-            self.assertEqual(
-                self.server._uploaded_file_mgr.get_files(
-                    session_info1.session.id, "widget_id"
-                ),
-                [file],
-            )
-
-            # Session1 should have a rerun request; Session2 should not
-            session_info1.session.request_rerun.assert_called_once()
-            session_info2.session.request_rerun.assert_not_called()
-
-    @tornado.testing.gen_test
     def test_orphaned_upload_file_deletion(self):
         """An uploaded file with no associated ReportSession should be
         deleted."""
@@ -358,7 +325,7 @@ class ServerTest(ServerTestCase):
             self.server._uploaded_file_mgr.add_files(
                 session_id="no_such_session",
                 widget_id="widget_id",
-                files=[UploadedFile("file.txt", b"123")],
+                files=[UploadedFileRec("id", "file.txt", "type", b"123")],
             )
 
             self.assertIsNone(
@@ -548,6 +515,39 @@ class PortRotateOneTest(unittest.TestCase):
                 patched__set_option.assert_called_with(
                     "server.port", 8501, config.ConfigOption.STREAMLIT_DEFINITION
                 )
+
+
+class UnixSocketTest(unittest.TestCase):
+    """Tests start_listening uses a unix socket when socket.address starts with
+    unix://"""
+
+    def get_httpserver(self):
+        httpserver = mock.MagicMock()
+
+        httpserver.add_socket = mock.Mock()
+
+        return httpserver
+
+    def test_unix_socket(self):
+        app = mock.MagicMock()
+
+        config.set_option("server.address", "unix://~/fancy-test/testasd")
+        some_socket = object()
+
+        mock_server = self.get_httpserver()
+        with patch.object(
+            tornado.httpserver, "HTTPServer", return_value=mock_server
+        ), patch.object(
+            tornado.netutil, "bind_unix_socket", return_value=some_socket
+        ) as bind_unix_socket, patch.dict(
+            os.environ, {"HOME": "/home/superfakehomedir"}
+        ):
+            start_listening(app)
+
+            bind_unix_socket.assert_called_with(
+                "/home/superfakehomedir/fancy-test/testasd"
+            )
+            mock_server.add_socket.assert_called_with(some_socket)
 
 
 class MetricsHandlerTest(tornado.testing.AsyncHTTPTestCase):

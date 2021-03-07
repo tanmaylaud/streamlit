@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,16 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
-import { ModalHeader, ModalBody, Button } from "reactstrap"
+import { BaseProvider, LightTheme } from "baseui"
+import { ReactWrapper } from "enzyme"
 
+import { ModalHeader, ModalBody } from "components/shared/Modal"
+import { mount } from "lib/test_util"
 import VideoRecordedDialog, { Props } from "./VideoRecordedDialog"
 
 URL.createObjectURL = jest.fn()
 
-const getProps = (props: Record<string, unknown> = {}): Props => ({
+const getProps = (props: Partial<Props> = {}): Props => ({
   fileName: "test",
   onClose: jest.fn(),
   videoBlob: new Blob(),
@@ -31,36 +33,39 @@ const getProps = (props: Record<string, unknown> = {}): Props => ({
 })
 
 describe("VideoRecordedDialog", () => {
-  it("renders without crashing", () => {
-    const wrapper = shallow(<VideoRecordedDialog {...getProps()} />)
+  const props = getProps()
+  let wrapper: ReactWrapper
 
+  beforeEach(() => {
+    wrapper = mount(
+      <BaseProvider theme={LightTheme}>
+        <VideoRecordedDialog {...props} />
+      </BaseProvider>
+    )
+  })
+
+  afterEach(() => {
+    wrapper.unmount()
+  })
+
+  it("renders without crashing", () => {
     expect(wrapper.html()).not.toBeNull()
   })
 
   it("should render a header", () => {
-    const props = getProps()
-    const wrapper = shallow(<VideoRecordedDialog {...props} />)
     const headerWrapper = wrapper.find(ModalHeader)
-
-    // @ts-ignore
-    headerWrapper.props().toggle()
-
     expect(headerWrapper.props().children).toBe("Next steps")
-    expect(props.onClose).toBeCalled()
   })
 
   it("should render a video", () => {
-    const wrapper = shallow(<VideoRecordedDialog {...getProps()} />)
     const bodyWrapper = wrapper.find(ModalBody)
 
-    expect(bodyWrapper.find("video").length).toBe(1)
+    expect(bodyWrapper.find("StyledVideo").length).toBe(1)
     expect(URL.createObjectURL).toBeCalled()
   })
 
   it("should render a download button", () => {
-    const props = getProps()
-    const wrapper = shallow(<VideoRecordedDialog {...props} />)
-    const buttonWrapper = wrapper.find(ModalBody).find(Button)
+    const buttonWrapper = wrapper.find(ModalBody).find("Button")
 
     buttonWrapper.simulate("click")
 

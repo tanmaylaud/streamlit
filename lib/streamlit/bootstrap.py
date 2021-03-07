@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,15 +18,18 @@ import sys
 
 import click
 import tornado.ioloop
+from streamlit.git_util import GitRepo, MIN_GIT_VERSION
 
 from streamlit import config
 from streamlit import net_util
 from streamlit import url_util
 from streamlit import env_util
+from streamlit import beta_secrets
 from streamlit import util
 from streamlit.report import Report
 from streamlit.logger import get_logger
-from streamlit.server.server import Server
+from streamlit.secrets import SECRETS_FILE_LOC
+from streamlit.server.server import Server, server_address_is_unix_socket
 
 LOGGER = get_logger(__name__)
 
@@ -91,18 +94,18 @@ def _fix_matplotlib_crash():
 def _fix_tornado_crash():
     """Set default asyncio policy to be compatible with Tornado 6.
 
-        Tornado 6 (at least) is not compatible with the default
-        asyncio implementation on Windows. So here we
-        pick the older SelectorEventLoopPolicy when the OS is Windows
-        if the known-incompatible default policy is in use.
+    Tornado 6 (at least) is not compatible with the default
+    asyncio implementation on Windows. So here we
+    pick the older SelectorEventLoopPolicy when the OS is Windows
+    if the known-incompatible default policy is in use.
 
-        This has to happen as early as possible to make it a low priority and
-        overrideable
+    This has to happen as early as possible to make it a low priority and
+    overrideable
 
-        See: https://github.com/tornadoweb/tornado/issues/2608
+    See: https://github.com/tornadoweb/tornado/issues/2608
 
-        FIXME: if/when tornado supports the defaults in asyncio,
-        remove and bump tornado requirement for py38
+    FIXME: if/when tornado supports the defaults in asyncio,
+    remove and bump tornado requirement for py38
     """
     if env_util.IS_WINDOWS and sys.version_info >= (3, 8):
         import asyncio
@@ -132,7 +135,16 @@ def _fix_sys_argv(script_path, args):
 
 
 def _on_server_start(server):
+    _maybe_print_old_git_warning(server.script_path)
     _print_url(server.is_running_hello)
+
+    # Load secrets.toml if it exists. If the file doesn't exist, this
+    # function will return without raising an exception. We catch any parse
+    # errors and display them here.
+    try:
+        beta_secrets.load_if_toml_exists()
+    except BaseException as e:
+        LOGGER.error(f"Failed to load {SECRETS_FILE_LOC}", exc_info=e)
 
     def maybe_open_browser():
         if config.get_option("server.headless"):
@@ -148,6 +160,9 @@ def _on_server_start(server):
         if config.is_manually_set("browser.serverAddress"):
             addr = config.get_option("browser.serverAddress")
         elif config.is_manually_set("server.address"):
+            if server_address_is_unix_socket():
+                # Don't open browser when server address is an unix socket
+                return
             addr = config.get_option("server.address")
         else:
             addr = "localhost"
@@ -179,7 +194,9 @@ def _print_url(is_running_hello):
             ("URL", Report.get_url(config.get_option("browser.serverAddress")))
         ]
 
-    elif config.is_manually_set("server.address"):
+    elif (
+        config.is_manually_set("server.address") and not server_address_is_unix_socket()
+    ):
         named_urls = [
             ("URL", Report.get_url(config.get_option("server.address"))),
         ]
@@ -213,11 +230,38 @@ def _print_url(is_running_hello):
 
     if is_running_hello:
         click.secho("  Ready to create your own Python apps super quickly?")
-        click.secho("  Just head over to ", nl=False)
+        click.secho("  Head over to ", nl=False)
         click.secho("https://docs.streamlit.io", bold=True)
         click.secho("")
         click.secho("  May you create awesome apps!")
         click.secho("")
+
+
+def _maybe_print_old_git_warning(script_path: str) -> None:
+    """If our script is running in a Git repo, and we're running a very old
+    Git version, print a warning that Git integration will be unavailable.
+    """
+    repo = GitRepo(script_path)
+    if (
+        not repo.is_valid()
+        and repo.git_version is not None
+        and repo.git_version < MIN_GIT_VERSION
+    ):
+        git_version_string = ".".join(str(val) for val in repo.git_version)
+        min_version_string = ".".join(str(val) for val in MIN_GIT_VERSION)
+        click.secho("")
+        click.secho("  Git integration is disabled.", fg="yellow", bold=True)
+        click.secho("")
+        click.secho(
+            f"  Streamlit requires Git {min_version_string} or later, "
+            f"but you have {git_version_string}.",
+            fg="yellow",
+        )
+        click.secho(
+            "  Git is used by Streamlit Sharing (https://streamlit.io/sharing).",
+            fg="yellow",
+        )
+        click.secho("  To enable this feature, please update Git.", fg="yellow")
 
 
 def run(script_path, command_line, args):

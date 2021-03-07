@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,6 +35,10 @@ IS_PYTHON_3_6 = sys.version_info[:2] == (3, 6)
 E2E_DIR = "e2e/scripts"
 
 EXCLUDED_FILENAMES = set()  # type: Set[str]
+
+# st_experimental_rerun.py calls st.experimental_rerun which raises a
+# RerunException when called within plain Python.
+EXCLUDED_FILENAMES.add("st_experimental_rerun.py")
 
 # Since there is not DISPLAY set (and since Streamlit is not actually running
 # and fixing Matplotlib in these tests), we set the MPL backend to something

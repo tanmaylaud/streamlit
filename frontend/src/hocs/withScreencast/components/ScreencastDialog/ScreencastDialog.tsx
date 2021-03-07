@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,14 @@
  */
 
 import React, { ChangeEvent, PureComponent, ReactNode } from "react"
-import { Button, Modal, ModalBody, ModalFooter, ModalHeader } from "reactstrap"
+import { Kind } from "components/shared/Button"
+import Modal, {
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  ModalButton,
+} from "components/shared/Modal"
+import { StyledInstruction, StyledRecordAudioLabel } from "./styled-components"
 
 export interface Props {
   /** Callback to close the dialog */
@@ -63,15 +70,15 @@ class ScreencastDialog extends PureComponent<Props, State> {
     const { onClose } = this.props
 
     return (
-      <Modal isOpen={true} toggle={onClose} className="streamlit-dialog">
-        <ModalHeader toggle={onClose}>Record a screencast</ModalHeader>
+      <Modal isOpen onClose={onClose}>
+        <ModalHeader>Record a screencast</ModalHeader>
         <ModalBody>
           <p>
             This will record a video with the contents of your screen, so you
             can easily share what you're seeing with others.
           </p>
           <p>
-            <label style={{ margin: 0 }}>
+            <StyledRecordAudioLabel>
               <input
                 type="checkbox"
                 name="recordAudio"
@@ -79,16 +86,16 @@ class ScreencastDialog extends PureComponent<Props, State> {
                 onChange={this.handleRecordAudioCheckbox}
               />{" "}
               Also record audio
-            </label>
+            </StyledRecordAudioLabel>
           </p>
-          <p style={{ margin: 0 }}>
+          <StyledInstruction>
             Press <kbd>Esc</kbd> any time to stop recording.
-          </p>
+          </StyledInstruction>
         </ModalBody>
         <ModalFooter>
-          <Button outline color="primary" onClick={this.handleStartButton}>
+          <ModalButton kind={Kind.PRIMARY} onClick={this.handleStartButton}>
             Start recording!
-          </Button>
+          </ModalButton>
         </ModalFooter>
       </Modal>
     )

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,14 @@
 
 import React from "react"
 import { Input as UIInput } from "baseui/input"
-import { Map as ImmutableMap } from "immutable"
 import { TextInput as TextInputProto } from "autogen/proto"
 import { WidgetStateManager, Source } from "lib/WidgetStateManager"
 import InputInstructions from "components/shared/InputInstructions/InputInstructions"
+import { StyledWidgetLabel } from "components/widgets/BaseWidget"
 
 export interface Props {
   disabled: boolean
-  element: ImmutableMap<string, any>
+  element: TextInputProto
   widgetMgr: WidgetStateManager
   width: number
 }
@@ -45,7 +45,15 @@ interface State {
 class TextInput extends React.PureComponent<Props, State> {
   public state: State = {
     dirty: false,
-    value: this.props.element.get("default"),
+    value: this.initialValue,
+  }
+
+  get initialValue(): string {
+    // If WidgetStateManager knew a value for this widget, initialize to that.
+    // Otherwise, use the default value from the widget protobuf.
+    const widgetId = this.props.element.id
+    const storedValue = this.props.widgetMgr.getStringValue(widgetId)
+    return storedValue !== undefined ? storedValue : this.props.element.default
   }
 
   public componentDidMount(): void {
@@ -53,7 +61,7 @@ class TextInput extends React.PureComponent<Props, State> {
   }
 
   private setWidgetValue = (source: Source): void => {
-    const widgetId: string = this.props.element.get("id")
+    const widgetId = this.props.element.id
     this.props.widgetMgr.setStringValue(widgetId, this.state.value, source)
     this.setState({ dirty: false })
   }
@@ -67,8 +75,7 @@ class TextInput extends React.PureComponent<Props, State> {
   private onChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const { value } = e.target
     const { element } = this.props
-
-    const maxChars = element.get("maxChars")
+    const { maxChars } = element
 
     if (!maxChars || value.length <= maxChars) {
       this.setState({
@@ -85,22 +92,19 @@ class TextInput extends React.PureComponent<Props, State> {
   }
 
   private getTypeString(): string | undefined {
-    return this.props.element.get("type") === TextInputProto.Type.PASSWORD
+    return this.props.element.type === TextInputProto.Type.PASSWORD
       ? "password"
-      : undefined
+      : "text"
   }
 
   public render = (): React.ReactNode => {
     const { dirty, value } = this.state
     const { element, width, disabled } = this.props
-
-    const label: string = element.get("label")
-    const maxChars = element.get("maxChars")
     const style = { width }
 
     return (
-      <div className="Widget row-widget stTextInput" style={style}>
-        <label>{label}</label>
+      <div className="row-widget stTextInput" style={style}>
+        <StyledWidgetLabel>{element.label}</StyledWidgetLabel>
         <UIInput
           value={value}
           onBlur={this.onBlur}
@@ -108,8 +112,23 @@ class TextInput extends React.PureComponent<Props, State> {
           onKeyPress={this.onKeyPress}
           disabled={disabled}
           type={this.getTypeString()}
+          overrides={{
+            Input: {
+              style: {
+                // Issue: https://github.com/streamlit/streamlit/issues/2495
+                // The input won't shrink in Firefox,
+                // unless the line below is provided.
+                // See https://stackoverflow.com/a/33811151
+                minWidth: 0,
+              },
+            },
+          }}
         />
-        <InputInstructions dirty={dirty} value={value} maxLength={maxChars} />
+        <InputInstructions
+          dirty={dirty}
+          value={value}
+          maxLength={element.maxChars}
+        />
       </div>
     )
   }

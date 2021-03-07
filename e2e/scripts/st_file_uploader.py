@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,22 +14,17 @@
 
 import streamlit as st
 
-st.set_option("deprecation.showfileUploaderEncoding", True)
-result = st.file_uploader("Drop a file:", type=["txt"])
-# result = st.file_uploader("Drop a file:", type=["txt"], accept_multiple_files=False)
-if result is not None:
-    st.text(result.getvalue())
-else:
+single_file = st.file_uploader("Drop a file:", type=["txt"])
+if single_file is None:
     st.text("No upload")
+else:
+    st.text(single_file.read())
 
-st.set_option("deprecation.showfileUploaderEncoding", False)
-st.file_uploader("Disable deprecation", type=["txt"])
-
-# result = st.file_uploader(
-#     "Drop multiple files:", type=["txt"], accept_multiple_files=True
-# )
-# if result is not None:
-#     strings = sorted([s.getvalue() for s in result])
-#     st.text("\n".join(strings))
-# else:
-#     st.text("No upload")
+multiple_files = st.file_uploader(
+    "Drop multiple files:", type=["txt"], accept_multiple_files=True
+)
+if multiple_files is None:
+    st.text("No upload")
+else:
+    files = [file.read().decode() for file in multiple_files]
+    st.text("\n".join(files))

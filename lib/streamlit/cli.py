@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ def _convert_config_option_to_click_option(config_option):
     description = config_option.description
     if config_option.deprecated:
         description += "\n {} - {}".format(
-            config_option.deprecation_text, config_option.deprecation_date
+            config_option.deprecation_text, config_option.expiration_date
         )
     envvar = "STREAMLIT_{}".format(to_snake_case(param).upper())
 
@@ -204,10 +204,15 @@ def main_run(target, args=None, **kwargs):
 
     _, extension = os.path.splitext(target)
     if extension[1:] not in ACCEPTED_FILE_EXTENSIONS:
-        raise click.BadArgumentUsage(
-            "Streamlit requires raw Python (.py) files, not %s.\nFor more information, please see https://docs.streamlit.io"
-            % extension
-        )
+        if extension[1:] == "":
+            raise click.BadArgumentUsage(
+                "Streamlit requires raw Python (.py) files, but the provided file has no extension.\nFor more information, please see https://docs.streamlit.io"
+            )
+        else:
+            raise click.BadArgumentUsage(
+                "Streamlit requires raw Python (.py) files, not %s.\nFor more information, please see https://docs.streamlit.io"
+                % extension
+            )
 
     if url(target):
         from streamlit.temporary_directory import TemporaryDirectory

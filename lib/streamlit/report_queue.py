@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -72,13 +72,8 @@ class ReportQueue(object):
             if not msg.HasField("delta"):
                 self._queue.append(msg)
             else:
-                # Deltas are uniquely identified by the combination of their
-                # container and ID.
-                delta_path = (
-                    msg.metadata.parent_block.container,
-                    tuple(msg.metadata.parent_block.path),
-                )
-                delta_key = (delta_path, msg.metadata.delta_id)
+                # Deltas are uniquely identified by their delta_path.
+                delta_key = tuple(msg.metadata.delta_path)
 
                 if delta_key in self._delta_index_map:
                     # Combine the previous message into the new message.
@@ -133,19 +128,17 @@ def compose_deltas(old_delta, new_delta):
     if new_delta_type == "new_element":
         return new_delta
 
-    elif new_delta_type == "new_block":
+    elif new_delta_type == "add_block":
         return new_delta
 
     elif new_delta_type == "add_rows":
-        import streamlit.elements.data_frame_proto as data_frame_proto
+        import streamlit.elements.data_frame as data_frame
 
-        # We should make data_frame_proto.add_rows *not* mutate any of the
+        # We should make data_frame.add_rows *not* mutate any of the
         # inputs. In the meantime, we have to deepcopy the input that will be
         # mutated.
         composed_delta = copy.deepcopy(old_delta)
-        data_frame_proto.add_rows(
-            composed_delta, new_delta, name=new_delta.add_rows.name
-        )
+        data_frame.add_rows(composed_delta, new_delta, name=new_delta.add_rows.name)
         return composed_delta
 
     LOGGER.error("Old delta: %s;\nNew delta: %s;", old_delta, new_delta)

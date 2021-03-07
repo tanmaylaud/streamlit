@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,28 +15,24 @@
  * limitations under the License.
  */
 
-import React, { PureComponent, ReactNode } from "react"
-import { Map as ImmutableMap } from "immutable"
-import withFullScreenWrapper from "hocs/withFullScreenWrapper"
-
+import React, { ReactElement, useEffect } from "react"
 import { select } from "d3"
 import { graphviz } from "d3-graphviz"
 import { logError } from "lib/log"
-import "./GraphVizChart.scss"
+import withFullScreenWrapper from "hocs/withFullScreenWrapper"
+import { GraphVizChart as GraphVizChartProto } from "autogen/proto"
+import { StyledGraphVizChart } from "./styled-components"
 
-interface Props {
+export interface GraphVizChartProps {
   width: number
-  element: ImmutableMap<string, any>
+  element: GraphVizChartProto
   index: number
-}
-
-export interface PropsWithHeight extends Props {
   height: number | undefined
 }
 
 interface Dimensions {
-  width: number
-  height: number
+  chartWidth: number
+  chartHeight: number
 }
 
 // Use d3Graphviz in a dummy expression so the library actually gets loaded.
@@ -44,90 +40,85 @@ interface Dimensions {
 const dummyGraphviz = graphviz
 dummyGraphviz // eslint-disable-line @typescript-eslint/no-unused-expressions
 
-export class GraphVizChart extends PureComponent<PropsWithHeight> {
-  private chartId = `graphviz-chart-${this.props.index}`
+export function GraphVizChart({
+  width: propWidth,
+  element,
+  index,
+  height: propHeight,
+}: GraphVizChartProps): ReactElement {
+  const chartId = `graphviz-chart-${index}`
 
-  private originalHeight = 0
+  let originalHeight = 0
+  let originalWidth = 0
 
-  private originalWidth = 0
-
-  private getChartData = (): string => {
-    return this.props.element.get("spec")
+  const getChartData = (): string => {
+    return element.spec
   }
 
-  public getChartDimensions = (): Dimensions => {
-    let width = this.originalWidth
-    let height = this.originalHeight
-    const useContainerWidth = this.props.element.get("useContainerWidth")
+  const getChartDimensions = (): Dimensions => {
+    let chartWidth = originalWidth
+    let chartHeight = originalHeight
 
-    if (this.props.height) {
+    if (propHeight) {
       // fullscreen
-      width = this.props.width
-      height = this.props.height
-    } else if (useContainerWidth) {
-      width = this.props.width
+      chartWidth = propWidth
+      chartHeight = propHeight
+    } else if (element.useContainerWidth) {
+      chartWidth = propWidth
     }
-    return { width, height }
+    return { chartWidth, chartHeight }
   }
 
-  private updateChart = (): void => {
+  const updateChart = (): void => {
     try {
       // Layout and render the graph
-      const graph = select(`#${this.chartId}`)
+      const graph = select(`#${chartId}`)
         .graphviz()
         .zoom(false)
         .fit(true)
         .scale(1)
-        .renderDot(this.getChartData())
+        .renderDot(getChartData())
         .on("end", () => {
-          const node = select(
-            `#${this.chartId} > svg`
-          ).node() as SVGGraphicsElement
+          const node = select(`#${chartId} > svg`).node() as SVGGraphicsElement
           if (node) {
-            this.originalHeight = node.getBBox().height
-            this.originalWidth = node.getBBox().width
+            originalHeight = node.getBBox().height
+            originalWidth = node.getBBox().width
           }
         })
 
-      const { height, width } = this.getChartDimensions()
-      if (height > 0) {
+      const { chartHeight, chartWidth } = getChartDimensions()
+      if (chartHeight > 0) {
         // Override or reset the graph height
-        graph.height(height)
+        graph.height(chartHeight)
       }
-      if (width > 0) {
+      if (chartWidth > 0) {
         // Override or reset the graph width
-        graph.width(width)
+        graph.width(chartWidth)
       }
     } catch (error) {
       logError(error)
     }
   }
 
-  public componentDidMount = (): void => {
-    this.updateChart()
-  }
+  useEffect(() => {
+    updateChart()
+  })
 
-  public componentDidUpdate = (): void => {
-    this.updateChart()
-  }
+  const elementDimensions = getChartDimensions()
+  const width: number = elementDimensions.chartWidth
+    ? elementDimensions.chartWidth
+    : propWidth
+  const height: number | undefined = elementDimensions.chartHeight
+    ? elementDimensions.chartHeight
+    : propHeight
 
-  public render = (): ReactNode => {
-    const elementDimensions = this.getChartDimensions()
-    const width: number = elementDimensions.width
-      ? elementDimensions.width
-      : this.props.width
-    const height: number | undefined = elementDimensions.height
-      ? elementDimensions.height
-      : this.props.height
-
-    return (
-      <div
-        className="graphviz stGraphVizChart"
-        id={this.chartId}
-        style={{ width, height }}
-      />
-    )
-  }
+  return (
+    <StyledGraphVizChart
+      className="graphviz stGraphVizChart"
+      id={chartId}
+      style={{ width, height }}
+    />
+  )
 }
 
 export default withFullScreenWrapper(GraphVizChart)

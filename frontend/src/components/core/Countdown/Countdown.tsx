@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,7 @@
  */
 
 import React, { PureComponent, ReactNode } from "react"
-
-import "./Countdown.scss"
+import { StyledCountdown } from "./styled-components"
 
 interface Props {
   countdown: number
@@ -57,14 +56,13 @@ class Countdown extends PureComponent<Props, State> {
     const { countdown }: State = this.state
 
     return (
-      <div
-        className="countdown"
+      <StyledCountdown
         onAnimationEnd={this.onAnimationEnd}
         key={`frame${countdown}`}
       >
         {/* The key forces DOM mutations, for animation to restart. */}
         <span>{countdown}</span>
-      </div>
+      </StyledCountdown>
     )
   }
 }

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,16 @@
  */
 
 import React from "react"
-import { Map as ImmutableMap } from "immutable"
+import { TextArea as TextAreaProto } from "autogen/proto"
 import { WidgetStateManager, Source } from "lib/WidgetStateManager"
 
 import { Textarea as UITextArea } from "baseui/textarea"
 import InputInstructions from "components/shared/InputInstructions/InputInstructions"
+import { StyledWidgetLabel } from "components/widgets/BaseWidget"
 
 export interface Props {
   disabled: boolean
-  element: ImmutableMap<string, any>
+  element: TextAreaProto
   widgetMgr: WidgetStateManager
   width: number
 }
@@ -45,7 +46,15 @@ interface State {
 class TextArea extends React.PureComponent<Props, State> {
   public state: State = {
     dirty: false,
-    value: this.props.element.get("default"),
+    value: this.initialValue,
+  }
+
+  get initialValue(): string {
+    // If WidgetStateManager knew a value for this widget, initialize to that.
+    // Otherwise, use the default value from the widget protobuf.
+    const widgetId: string = this.props.element.id
+    const storedValue = this.props.widgetMgr.getStringValue(widgetId)
+    return storedValue !== undefined ? storedValue : this.props.element.default
   }
 
   public componentDidMount(): void {
@@ -53,7 +62,7 @@ class TextArea extends React.PureComponent<Props, State> {
   }
 
   private setWidgetValue = (source: Source): void => {
-    const widgetId: string = this.props.element.get("id")
+    const widgetId = this.props.element.id
     this.props.widgetMgr.setStringValue(widgetId, this.state.value, source)
     this.setState({ dirty: false })
   }
@@ -67,8 +76,7 @@ class TextArea extends React.PureComponent<Props, State> {
   private onChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     const { value } = e.target
     const { element } = this.props
-
-    const maxChars = element.get("maxChars")
+    const { maxChars } = element
 
     if (!maxChars || value.length <= maxChars) {
       this.setState({
@@ -104,13 +112,11 @@ class TextArea extends React.PureComponent<Props, State> {
     const { value, dirty } = this.state
 
     const style = { width }
-    const label = element.get("label")
-    const height = element.get("height")
-    const maxChars = element.get("maxChars")
+    const { height } = element
 
     return (
-      <div className="Widget stTextArea" style={style}>
-        <label>{label}</label>
+      <div className="stTextArea" style={style}>
+        <StyledWidgetLabel>{element.label}</StyledWidgetLabel>
         <UITextArea
           value={value}
           onBlur={this.onBlur}
@@ -130,7 +136,7 @@ class TextArea extends React.PureComponent<Props, State> {
         <InputInstructions
           dirty={dirty}
           value={value}
-          maxLength={maxChars}
+          maxLength={element.maxChars}
           type={"multiline"}
         />
       </div>

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,16 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
-import { fromJS } from "immutable"
+import { mount } from "lib/test_util"
 
-import { StreamlitMarkdown } from "components/shared/StreamlitMarkdown"
-import ExceptionElement, { Props } from "./ExceptionElement"
+import StreamlitMarkdown from "components/shared/StreamlitMarkdown"
+import { Exception as ExceptionProto } from "autogen/proto"
+import ExceptionElement, { ExceptionElementProps } from "./ExceptionElement"
 
-const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
-  element: fromJS({
+const getProps = (
+  elementProps: Partial<ExceptionProto> = {}
+): ExceptionElementProps => ({
+  element: ExceptionProto.create({
     stackTrace: ["step 1", "step 2", "step 3"],
     type: "RuntimeError",
     message: "This is an exception of type RuntimeError",
@@ -35,16 +37,15 @@ const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
 
 describe("ExceptionElement Element", () => {
   const props = getProps()
-  const wrapper = shallow(<ExceptionElement {...props} />)
+  const wrapper = mount(<ExceptionElement {...props} />)
 
   it("renders without crashing", () => {
     expect(wrapper.html()).toMatchSnapshot()
   })
 
   it("should render the complete stack", () => {
-    expect(wrapper.find(".stack-trace-title").text()).toBe("Traceback:")
-
-    const traceRows = wrapper.find("code .stack-trace-row")
+    expect(wrapper.find("StyledStackTraceTitle").text()).toBe("Traceback:")
+    const traceRows = wrapper.find("StyledStackTraceRow")
     expect(traceRows.length).toBe(3)
 
     traceRows.forEach((val, id) => {
@@ -56,17 +57,15 @@ describe("ExceptionElement Element", () => {
     const props = getProps({
       messageIsMarkdown: true,
     })
-    const wrapper = shallow(<ExceptionElement {...props} />)
+    const wrapper = mount(<ExceptionElement {...props} />)
 
     expect(wrapper.find(StreamlitMarkdown).length).toBe(1)
     expect(wrapper.find(StreamlitMarkdown).props()).toMatchSnapshot()
   })
 
   it("should render if there's no message", () => {
-    const props = getProps({
-      message: null,
-    })
-    const wrapper = shallow(<ExceptionElement {...props} />)
+    const props = getProps({ message: "" })
+    const wrapper = mount(<ExceptionElement {...props} />)
 
     expect(wrapper.find("div .message").text()).toBe("RuntimeError")
   })

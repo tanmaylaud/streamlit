@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
+import { shallow } from "lib/test_util"
 import { SessionInfo } from "lib/SessionInfo"
 import { MapboxToken } from "./MapboxToken"
 
@@ -49,6 +49,8 @@ describe("withMapboxToken", () => {
       streamlitVersion: "sv",
       pythonVersion: "pv",
       installationId: "iid",
+      installationIdV1: "iid1",
+      installationIdV2: "iid2",
       authorEmail: "ae",
       maxCachedMessageAge: 2,
       commandLine,
@@ -73,7 +75,7 @@ describe("withMapboxToken", () => {
     const WrappedComponent = withMapboxToken("st.test")(TestComponent)
     const wrapper = shallow(<WrappedComponent {...props} />)
 
-    expect(wrapper.html()).not.toBeNull()
+    expect(wrapper.find("Alert").exists()).toBe(true)
   })
 
   it("passes mapboxToken to wrapped component", async () => {

@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,22 +13,38 @@
 # limitations under the License.
 
 """Utility functions to use in our tests."""
-import functools
-import sys
 import threading
 import unittest
+from contextlib import contextmanager
+from typing import Any, Dict
+from unittest.mock import patch
 
 from streamlit import config
-from streamlit.delta_generator import DeltaGenerator
 from streamlit.report_queue import ReportQueue
-from streamlit.report_thread import REPORT_CONTEXT_ATTR_NAME
 from streamlit.report_thread import ReportContext
 from streamlit.report_thread import add_report_ctx
 from streamlit.report_thread import get_report_ctx
-from streamlit.report_thread import _WidgetIDSet
 from streamlit.widgets import Widgets
-from streamlit.proto.BlockPath_pb2 import BlockPath
 from streamlit.uploaded_file_manager import UploadedFileManager
+
+
+@contextmanager
+def patch_config_options(config_overrides: Dict[str, Any]):
+    """A context manager that overrides config options. It can
+    also be used as a function decorator.
+
+    Examples:
+    >>> with patch_config_options({"server.headless": True}):
+    ...     assert(config.get_option("server.headless") is True)
+    ...     # Other test code that relies on these options
+
+    >>> @patch_config_options({"server.headless": True})
+    ... def test_my_thing():
+    ...   assert(config.get_option("server.headless") is True)
+    """
+    mock_get_option = build_mock_config_get_option(config_overrides)
+    with patch.object(config, "get_option", new=mock_get_option):
+        yield
 
 
 def build_mock_config_get_option(overrides_dict):
@@ -53,22 +69,6 @@ def build_mock_config_is_manually_set(overrides_dict):
     return mock_config_is_manually_set
 
 
-def requires_tensorflow(func):
-    """Decorator indicating that a TestCase or test requires Tensorflow."""
-
-    @functools.wraps(func)
-    def inner(*args, **kwargs):
-        version = sys.version_info
-        if version.major == 3 and version.minor > 7:
-            args[0].skipTest(
-                "Requires Tensorflow, which doesn't support Python %d.%d"
-                % (version.major, version.minor)
-            )
-        func(*args, **kwargs)
-
-    return inner
-
-
 class DeltaGeneratorTestCase(unittest.TestCase):
     def setUp(self, override_root=True):
         self.report_queue = ReportQueue()
@@ -84,7 +84,6 @@ class DeltaGeneratorTestCase(unittest.TestCase):
                     enqueue=self.report_queue.enqueue,
                     query_string="",
                     widgets=Widgets(),
-                    widget_ids_this_run=_WidgetIDSet(),
                     uploaded_file_mgr=UploadedFileManager(),
                 ),
             )

@@ -1,14 +1,33 @@
+# Copyright 2018-2021 Streamlit Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
-import platform
 import setuptools
-import subprocess
 import sys
 
-from pipenv.project import Project
-from pipenv.utils import convert_deps_to_pip
 from setuptools.command.install import install
 
-VERSION = "0.63.0"  # PEP-440
+try:
+    from pipenv.project import Project
+    from pipenv.utils import convert_deps_to_pip
+except:
+    exit_msg = (
+        "pipenv is required to package Streamlit. Please install pipenv and try again"
+    )
+    sys.exit(exit_msg)
+
+VERSION = "0.78.0"  # PEP-440
 
 NAME = "streamlit"
 
@@ -25,18 +44,6 @@ pipfile = Project(chdir=False).parsed_pipfile
 
 packages = pipfile["packages"].copy()
 requirements = convert_deps_to_pip(packages, r=False)
-
-# Check whether xcode tools are available before making watchdog a
-# dependency (only if the current system is a Mac).
-if platform.system() == "Darwin":
-    has_xcode = subprocess.call(["xcode-select", "--version"], shell=False) == 0
-    has_gcc = subprocess.call(["gcc", "--version"], shell=False) == 0
-
-    if not (has_xcode and has_gcc):
-        try:
-            requirements.remove("watchdog")
-        except ValueError:
-            pass
 
 
 class VerifyVersionCommand(install):
@@ -74,5 +81,7 @@ setuptools.setup(
     # - streamlit version
     # - streamlit hello
     scripts=["bin/streamlit.cmd"],
-    cmdclass={"verify": VerifyVersionCommand,},
+    cmdclass={
+        "verify": VerifyVersionCommand,
+    },
 )

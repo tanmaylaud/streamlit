@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,7 @@
 
 import React from "react"
 import moment from "moment"
-import { shallow } from "enzyme"
-import { fromJS } from "immutable"
+import { shallow } from "lib/test_util"
 import { WidgetStateManager } from "lib/WidgetStateManager"
 import { TimeInput as TimeInputProto } from "autogen/proto"
 
@@ -29,8 +28,8 @@ jest.mock("lib/WidgetStateManager")
 
 const sendBackMsg = jest.fn()
 const getProps = (elementProps: Partial<TimeInputProto> = {}): Props => ({
-  element: fromJS({
-    id: 123,
+  element: TimeInputProto.create({
+    id: "123",
     label: "Label",
     default: "12:45",
     ...elementProps,
@@ -40,7 +39,7 @@ const getProps = (elementProps: Partial<TimeInputProto> = {}): Props => ({
   widgetMgr: new WidgetStateManager(sendBackMsg),
 })
 
-describe("TextInput widget", () => {
+describe("TimeInput widget", () => {
   const props = getProps()
   const wrapper = shallow(<TimeInput {...props} />)
 
@@ -49,13 +48,13 @@ describe("TextInput widget", () => {
   })
 
   it("should show a label", () => {
-    expect(wrapper.find("label").text()).toBe(props.element.get("label"))
+    expect(wrapper.find("StyledWidgetLabel").text()).toBe(props.element.label)
   })
 
   it("should set widget value on did mount", () => {
     expect(props.widgetMgr.setStringValue).toHaveBeenCalledWith(
-      props.element.get("id"),
-      props.element.get("default"),
+      props.element.id,
+      props.element.default,
       { fromUi: false }
     )
   })
@@ -67,7 +66,6 @@ describe("TextInput widget", () => {
     // @ts-ignore
     const splittedClassName = className.split(" ")
 
-    expect(splittedClassName).toContain("Widget")
     expect(splittedClassName).toContain("stTimeInput")
 
     // @ts-ignore
@@ -103,7 +101,7 @@ describe("TextInput widget", () => {
 
     expect(wrapper.state("value")).toBe("12:08")
     expect(props.widgetMgr.setStringValue).toHaveBeenCalledWith(
-      props.element.get("id"),
+      props.element.id,
       "12:08",
       { fromUi: true }
     )

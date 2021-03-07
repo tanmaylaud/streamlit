@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ class WidgetTest(unittest.TestCase):
 
         _create_widget("trigger", states).trigger_value = True
         _create_widget("bool", states).bool_value = True
-        _create_widget("float", states).float_value = 0.5
+        _create_widget("float", states).double_value = 0.5
         _create_widget("int", states).int_value = 123
         _create_widget("string", states).string_value = "howdy!"
 

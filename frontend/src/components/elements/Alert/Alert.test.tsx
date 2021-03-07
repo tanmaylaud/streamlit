@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,96 +15,80 @@
  * limitations under the License.
  */
 
-import React, { ReactElement } from "react"
-import { shallow } from "enzyme"
-import { Map as ImmutableMap } from "immutable"
+import React from "react"
 
+import { shallow } from "lib/test_util"
+import { Kind } from "components/shared/AlertContainer"
 import { Alert as AlertProto } from "autogen/proto"
-import { StreamlitMarkdown } from "../../shared/StreamlitMarkdown"
-import Alert, { getAlertCSSClass, Props as AlertProps } from "./Alert"
+import Alert, { AlertProps, getAlertKind } from "./Alert"
 
-const getProps = (elementProps: Record<string, unknown> = {}): AlertProps => ({
-  element: ImmutableMap({
-    body: "Something happened!",
-    ...elementProps,
-  }),
+const getProps = (elementProps: Partial<AlertProps> = {}): AlertProps => ({
+  body: "Something happened!",
+  kind: Kind.INFO,
   width: 100,
+  ...elementProps,
 })
-
-function elementClassIsCorrect(
-  element: ReactElement,
-  format: number
-): boolean {
-  return element.props.className.includes(getAlertCSSClass(format))
-}
 
 describe("Alert element", () => {
   it("renders an ERROR box as expected", () => {
-    const format = AlertProto.Format.ERROR
     const props = getProps({
-      format,
+      kind: getAlertKind(AlertProto.Format.ERROR),
       body: "#what in the world?",
     })
     const wrap = shallow(<Alert {...props} />)
     const elem = wrap.get(0)
     expect(elem.props.className.includes("stAlert")).toBeTruthy()
-    expect(elementClassIsCorrect(elem, format)).toBeTruthy()
-    expect(wrap.find(StreamlitMarkdown).props().source).toBe(
+    expect(wrap.find("AlertContainer").prop("kind")).toEqual(Kind.ERROR)
+    expect(wrap.find("StreamlitMarkdown").prop("source")).toBe(
       "#what in the world?"
     )
   })
 
   it("renders a WARNING box as expected", () => {
-    const format = AlertProto.Format.WARNING
     const props = getProps({
-      format,
+      kind: getAlertKind(AlertProto.Format.WARNING),
       body: "Are you *sure*?",
     })
     const wrap = shallow(<Alert {...props} />)
     const elem = wrap.get(0)
     expect(elem.props.className.includes("stAlert")).toBeTruthy()
-    expect(elementClassIsCorrect(elem, format)).toBeTruthy()
-    expect(wrap.find(StreamlitMarkdown).props().source).toBe("Are you *sure*?")
+    expect(wrap.find("AlertContainer").prop("kind")).toEqual(Kind.WARNING)
+    expect(wrap.find("StreamlitMarkdown").prop("source")).toBe(
+      "Are you *sure*?"
+    )
   })
 
   it("renders a SUCCESS box as expected", () => {
-    const format = AlertProto.Format.SUCCESS
     const props = getProps({
-      format,
+      kind: getAlertKind(AlertProto.Format.SUCCESS),
       body: "But our princess was in another castle!",
     })
     const wrap = shallow(<Alert {...props} />)
     const elem = wrap.get(0)
     expect(elem.props.className.includes("stAlert")).toBeTruthy()
-    expect(elementClassIsCorrect(elem, format)).toBeTruthy()
-    expect(wrap.find(StreamlitMarkdown).props().source).toBe(
+    expect(wrap.find("AlertContainer").prop("kind")).toEqual(Kind.SUCCESS)
+    expect(wrap.find("StreamlitMarkdown").prop("source")).toBe(
       "But our princess was in another castle!"
     )
   })
 
   it("renders an INFO box as expected", () => {
-    const format = AlertProto.Format.INFO
     const props = getProps({
-      format,
+      kind: getAlertKind(AlertProto.Format.INFO),
       body: "It's dangerous to go alone.",
     })
     const wrap = shallow(<Alert {...props} />)
     const elem = wrap.get(0)
     expect(elem.props.className.includes("stAlert")).toBeTruthy()
-    expect(elementClassIsCorrect(elem, format)).toBeTruthy()
-    expect(wrap.find(StreamlitMarkdown).props().source).toBe(
+    expect(wrap.find("AlertContainer").prop("kind")).toEqual(Kind.INFO)
+    expect(wrap.find("StreamlitMarkdown").prop("source")).toBe(
       "It's dangerous to go alone."
     )
   })
+})
 
-  it("should throw an error when the format is invalid", () => {
-    const props = getProps({
-      format: "test",
-      body: "It's dangerous to go alone.",
-    })
-
-    expect(() => {
-      shallow(<Alert {...props} />)
-    }).toThrow("Unexpected alert type: test")
-  })
+test("getAlertKind throws an error on invalid format", () => {
+  expect(() => getAlertKind(AlertProto.Format.UNUSED)).toThrow(
+    `Unexpected alert type: ${AlertProto.Format.UNUSED}`
+  )
 })

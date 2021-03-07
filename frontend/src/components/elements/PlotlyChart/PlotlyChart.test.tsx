@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
-import { fromJS } from "immutable"
+import { shallow } from "lib/test_util"
 import Plot from "react-plotly.js"
 
+import { PlotlyChart as PlotlyChartProto } from "autogen/proto"
 import mock from "./mock"
-import { PropsWithHeight, DEFAULT_HEIGHT } from "./PlotlyChart"
+import { DEFAULT_HEIGHT, PlotlyChartProps } from "./PlotlyChart"
 
 jest.mock("react-plotly.js", () => jest.fn())
 
@@ -29,9 +29,9 @@ jest.mock("react-plotly.js", () => jest.fn())
 const { PlotlyChart } = require("./PlotlyChart")
 
 const getProps = (
-  elementProps: Record<string, unknown> = {}
-): PropsWithHeight => ({
-  element: fromJS({
+  elementProps: Partial<PlotlyChartProto> = {}
+): PlotlyChartProps => ({
+  element: PlotlyChartProto.create({
     ...mock,
     ...elementProps,
   }),

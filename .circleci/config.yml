@@ -6,6 +6,18 @@ version: 2.1
 orbs:
   slack: circleci/slack@3.4.2
 commands:
+  update-submodules:
+    steps:
+      - run:
+          # `git submodule update --remote` checks out the submodule repo's
+          # HEAD (as opposed to whatever commit is specified in the
+          # submodule). We want to ensure we're always testing against
+          # the most recent commit in our component-template repo.
+          name: Update submodules
+          command: |
+            git submodule init
+            git submodule update --remote
+
   pre-cache:
     steps:
       - run: &get_make_checksum
@@ -55,22 +67,22 @@ commands:
       - restore_cache: &restore_virtualenv
           name: Restore virtualenv from cache
           keys:
-            - v12-python-venv-{{ checksum "~/python_cache_key.md5" }}
+            - v13-python-venv-{{ checksum "~/python_cache_key.md5" }}
 
       - restore_cache: &restore_nvm
           name: Restore nvm and node_modules from cache
           keys:
-            - v12-nvm_node_modules-{{ checksum "~/yarn.lock.md5" }}
+            - v13-nvm_node_modules-{{ checksum "~/yarn.lock.md5" }}
 
       - restore_cache: &restore_make
           name: Restore make from cache
           keys:
-            - v12_make.bin-{{ checksum "~/make.md5" }}
+            - v13_make.bin-{{ checksum "~/make.md5" }}
 
       - restore_cache: &restore_dot
           name: Restore dot from cache
           keys:
-            - v12_dot.bin-{{ checksum "~/dot.md5" }}
+            - v13_dot.bin-{{ checksum "~/dot.md5" }}
 
   pre-make:
     steps:
@@ -109,14 +121,14 @@ commands:
               # install nodejs via nvm
               curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.35.2/install.sh | bash
               source "$HOME/.nvm/nvm.sh"
-              nvm install --lts=dubnium
+              nvm install --lts=fermium
               # install yarn
               npm install -g yarn
             fi
             if [ ! -d frontend/node_modules ] ; then
               source "$HOME/.nvm/nvm.sh"
+              make react-init
             fi
-            make react-init scssvars
             echo 'export NVM_DIR="$HOME/.nvm"' >> $BASH_ENV
             echo 'source "$NVM_DIR/nvm.sh"' >> $BASH_ENV
 
@@ -124,6 +136,11 @@ commands:
           name: Install pyodbc dependencies
           command: |
             ${SUDO} apt-get install -y unixodbc-dev
+
+      - run:
+          name: Install graphviz dependencies
+          command: |
+            ${SUDO} apt-get install -y libgvc6
 
       - run: &activate_virtualenv
           name: Create virtualenv
@@ -172,8 +189,10 @@ workflows:
             tags:
               only: /^([0-9]+\.){3}dev[0-9]+/
       - cypress: # Non flaky Cypress tests
-          requires:
-            - python-3-8
+          filters:
+            tags:
+              only: /^([0-9]+\.){3}dev[0-9]+/
+      - pr-preview: # Make a preview branch for each PR
           filters:
             tags:
               only: /^([0-9]+\.){3}dev[0-9]+/
@@ -187,15 +206,16 @@ workflows:
               only: /^([0-9]+\.){3}dev[0-9]+/
             branches:
               ignore: /.*/
-      - cypress-flaky-approval:
-          type: approval
-          requires:
-            - python-3-8
-      - cypress: # Flaky Cypress tests
-          name: cypress-flaky
-          flaky: true
-          requires:
-            - cypress-flaky-approval
+      # Uncomment to get a button that runs flaky tests on CircleCI:
+      # - cypress-flaky-approval:
+      #     type: approval
+      #     requires:
+      #       - python-3-8
+      # - cypress: # Flaky Cypress tests
+      #     name: cypress-flaky
+      #     flaky: true
+      #     requires:
+      #       - cypress-flaky-approval
 
   create-nightly-tag:
     triggers:
@@ -220,6 +240,8 @@ jobs:
       - checkout:
           name: Checkout Streamlit code
 
+      - update-submodules
+
       #################################################################
       # Pre Cache Steps
       #################################################################
@@ -237,13 +259,13 @@ jobs:
 
       - save_cache:
           name: Save make to cache
-          key: v12_make.bin-{{ checksum "~/make.md5" }}
+          key: v13_make.bin-{{ checksum "~/make.md5" }}
           paths:
             - make.bin
 
       - save_cache:
           name: Save dot to cache
-          key: v12_dot.bin-{{ checksum "~/dot.md5" }}
+          key: v13_dot.bin-{{ checksum "~/dot.md5" }}
           paths:
             - dot.bin
 
@@ -307,6 +329,14 @@ jobs:
             make integration-tests
 
       #################################################################
+      # Run CLI smoke tests
+      #################################################################
+      - run:
+          name: CLI smoke tests
+          command: |
+            make cli-smoke-tests
+
+      #################################################################
       # Run frontend tests. (Only executed in one job.)
       #################################################################
       - run:
@@ -323,16 +353,17 @@ jobs:
       #################################################################
       - save_cache:
           name: Save virtualenv to cache
-          key: v12-python-venv-{{ checksum "~/python_cache_key.md5" }}
+          key: v13-python-venv-{{ checksum "~/python_cache_key.md5" }}
           paths:
             - venv
 
       - save_cache:
           name: Save nvm and node_modules to cache
-          key: v12-nvm_node_modules-{{ checksum "~/yarn.lock.md5" }}
+          key: v13-nvm_node_modules-{{ checksum "~/yarn.lock.md5" }}
           paths:
             - ~/.nvm
             - ~/.cache
+            - frontend/node_modules
 
       - when:
           condition: <<pipeline.git.tag>>
@@ -358,29 +389,27 @@ jobs:
       - checkout:
           name: Checkout Streamlit code
 
+      - update-submodules
+
       - pre-cache
       - restore-from-cache
       - pre-make
       - make-init
-
-      - run: &make_scss_vars
-          name: Make SCSS vars
-          command: |
-            make scssvars
 
       - run:
           <<: *make_develop
 
       - run:
           name: Create tag
+          # TODO move git commands into script
           command: |
+            git config user.email "jonathan@streamlit.io"
+            git config user.name "CircleCI"
+
             TAG="$(./scripts/pypi_nightly_create_tag.py)"
 
             ./scripts/update_version.py $TAG
             ./scripts/update_name.py streamlit-nightly
-
-            git config user.email "jonathan@streamlit.io"
-            git config user.name "CircleCI"
 
             git add lib/setup.py
             git add docs/troubleshooting/sanity-checks.md
@@ -389,7 +418,7 @@ jobs:
             git add lib/streamlit/__init__.py
             git add lib/streamlit/version.py
 
-            git commit -m"Update version and project name in files"
+            git commit -m "Update version and project name in files"
 
             git tag -a $TAG -m "Streamlit nightly $TAG"
             git push origin $TAG
@@ -402,7 +431,7 @@ jobs:
     docker:
       - image: circleci/python:3.8.1
 
-    resource_class: medium+
+    resource_class: large
 
     working_directory: ~/repo
 
@@ -410,13 +439,12 @@ jobs:
       - checkout:
           name: Checkout Streamlit code
 
+      - update-submodules
+
       - pre-cache
       - restore-from-cache
       - pre-make
       - make-init
-
-      - run:
-          <<: *make_scss_vars
 
       - run:
           name: verify git tag vs. version
@@ -439,9 +467,7 @@ jobs:
           no_output_timeout: 2h
           command: |
             ${SUDO} apt-get install rsync
-            make frontend
-            make install
-            make wheel
+            make package
 
       - run:
           name: upload to pypi
@@ -452,11 +478,97 @@ jobs:
           fail_only: true
           failure_message: ":blobonfire: Nightly job failed to release"
 
+  pr-preview:
+    docker:
+      - image: circleci/python:3.8.1
+
+    resource_class: large
+
+    working_directory: ~/repo
+
+    steps:
+      - add_ssh_keys:
+          name: Add the read/write Github deploy key
+          fingerprints:
+            - "06:66:05:ea:ba:10:ec:b4:93:06:ab:62:7c:20:33:f0"
+
+      - checkout:
+          name: Checkout Streamlit code
+
+      - update-submodules
+      - pre-cache
+      - restore-from-cache
+      - pre-make
+      - make-init
+
+      - run:
+          name: Create wheel file
+          no_output_timeout: 2h
+          command: |
+            ${SUDO} apt-get install rsync
+            make package
+
+      - run:
+          name: Set PREVIEW_BRANCH envvar
+          command: |
+            echo "export PREVIEW_BRANCH=$(
+              if [[ -n "${CIRCLE_PR_NUMBER}" ]]
+              then
+                echo "pr-${CIRCLE_PR_NUMBER}"
+              elif [[ -n "${CIRCLE_BRANCH}" ]]
+              then
+                echo "${CIRCLE_BRANCH}-preview"
+              elif [[ -n "${CIRCLE_TAG}" ]]
+              then
+                echo "tag-${CIRCLE_TAG}"
+              else
+                echo "main-preview"
+              fi
+            )" >> $BASH_ENV
+
+      - run:
+          name: Upload wheel to S3
+          command: |
+            ${SUDO} apt-get install -y awscli
+            aws configure set aws_access_key_id ${CORE_PREVIEWS_S3_KEY_ID}
+            aws configure set aws_secret_access_key ${CORE_PREVIEWS_S3_SECRET_KEY}
+
+            cd lib/dist
+            export WHEELFILE="$(ls -t *.whl | head -n 1)"
+
+            aws s3 cp ${WHEELFILE} s3://core-previews/${PREVIEW_BRANCH}/ --acl public-read
+            cd ../..
+
+            echo -e "https://core-previews.s3-us-west-2.amazonaws.com/${PREVIEW_BRANCH}/${WHEELFILE}" >> S3_URL
+
+      - run:
+          name: Setup preview repo
+          command: |
+            git config --global user.email "austin@streamlit.io"
+            git config --global user.name "CircleCI"
+            git clone git@github.com:streamlit/core-previews.git
+
+            cd core-previews
+            git branch -D ${PREVIEW_BRANCH} &>/dev/null || true
+            git checkout -b ${PREVIEW_BRANCH}
+
+            cat ../S3_URL >> requirements.txt
+
+            git add .
+            git commit -m "Prepare core preview: ${PREVIEW_BRANCH}"
+            git push -f origin ${PREVIEW_BRANCH}
+
+      - run:
+          name: Ready to deploy!
+          command: |
+            echo -e "https://share.streamlit.io/deploy?repository=streamlit/core-previews&branch=${PREVIEW_BRANCH}&mainModule=streamlit_app.py"
+
   cypress:
     docker:
       - image: circleci/python:3.7.4-stretch
+    parallelism: 10
 
-    resource_class: medium+
+    resource_class: xlarge
 
     working_directory: ~/repo
 
@@ -470,13 +582,12 @@ jobs:
       - checkout:
           name: Checkout Streamlit code
 
+      - update-submodules
+
       - pre-cache
       - restore-from-cache
       - pre-make
       - make-init
-
-      - run:
-          <<: *make_scss_vars
 
       - run:
           <<: *make_develop
@@ -505,31 +616,53 @@ jobs:
           steps:
             - run:
                 name: Cypress
+                # See comment below, in the "unless << parameters.flaky >>".
                 command: |
                   cd frontend
-                  yarn run cy:serve-and-run-all-flaky
+                  TEST=$(circleci tests glob ../e2e/specs/*.spec.js | circleci tests split --split-by=timings)
+                  ../scripts/run_e2e_tests.py -a -f $TEST
 
       - unless:
           condition: << parameters.flaky >>
           steps:
             - run:
                 name: Cypress
+                # Need to run from frontend directory, because
+                # cypress-circleci-reporter reports paths relative to there.
+                #
+                # `circleci tests split` splits our long-running Cypress e2e
+                # tests into N different parallel jobs, so that they finish
+                # much faster than if we run them in sequence. CircleCI makes
+                # sure each container that calls `circleci test split` receives
+                # its share of the test files.
                 command: |
                   cd frontend
-                  yarn run cy:serve-and-run-all
+                  TEST=$(circleci tests glob ../e2e/specs/*.spec.js | circleci tests split --total=9 --split-by=timings)
+                  ../scripts/run_e2e_tests.py -a $TEST
 
       - store_test_results: &store_results
-          path: frontend/test-reports
+          path: frontend/test_results/cypress
           when: always
-
-      - store_artifacts: &store_report
-          path: frontend/mochawesome-report
 
       - store_artifacts: &store_videos
           path: frontend/cypress/videos
 
       - store_artifacts: &store_snapshots
           path: frontend/cypress/snapshots
+
+      - save_cache:
+          name: Save virtualenv to cache
+          key: v13-python-venv-{{ checksum "~/python_cache_key.md5" }}
+          paths:
+            - venv
+
+      - save_cache:
+          name: Save nvm and node_modules to cache
+          key: v13-nvm_node_modules-{{ checksum "~/yarn.lock.md5" }}
+          paths:
+            - ~/.nvm
+            - ~/.cache
+            - frontend/node_modules
 
       - when:
           condition: <<pipeline.git.tag>>

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,16 @@
  * limitations under the License.
  */
 
-import { BasicDialog } from "components/core/StreamlitDialog/StreamlitDialog"
 import React, { PureComponent, ReactNode } from "react"
 import { HotKeys } from "react-hotkeys"
-import { Button, ModalBody, ModalFooter, ModalHeader } from "reactstrap"
+import Modal, {
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  ModalButton,
+} from "components/shared/Modal"
+import { Kind } from "components/shared/Button"
+import { StyledShortcutLabel } from "./styled-components"
 
 export interface Props {
   /** Called to close the dialog without rerunning the report. */
@@ -29,6 +35,7 @@ export interface Props {
    * @param alwaysRerun if true, also change the run-on-save setting for this report
    */
   onRerun: (alwaysRerun: boolean) => void
+  allowRunOnSave: boolean
 }
 
 export class ScriptChangedDialog extends PureComponent<Props> {
@@ -52,30 +59,22 @@ export class ScriptChangedDialog extends PureComponent<Props> {
     // HotKeys component here but its not working without them
     return (
       <HotKeys handlers={this.keyHandlers} attach={window} focused={true}>
-        <BasicDialog onClose={this.props.onClose}>
-          <ModalHeader toggle={this.props.onClose}>App changed</ModalHeader>
+        <Modal isOpen onClose={this.props.onClose}>
+          <ModalHeader>App changed</ModalHeader>
           <ModalBody>
             <div>The source files for this app have changed on disk.</div>
           </ModalBody>
           <ModalFooter>
-            <Button
-              className="underlineFirstLetter"
-              outline
-              color="secondary"
-              onClick={this.alwaysRerun}
-            >
-              Always rerun
-            </Button>{" "}
-            <Button
-              className="underlineFirstLetter"
-              outline
-              color="primary"
-              onClick={this.rerun}
-            >
-              Rerun
-            </Button>
+            {this.props.allowRunOnSave ? (
+              <ModalButton kind={Kind.SECONDARY} onClick={this.alwaysRerun}>
+                <StyledShortcutLabel>Always rerun</StyledShortcutLabel>
+              </ModalButton>
+            ) : null}
+            <ModalButton kind={Kind.PRIMARY} onClick={this.rerun}>
+              <StyledShortcutLabel>Rerun</StyledShortcutLabel>
+            </ModalButton>
           </ModalFooter>
-        </BasicDialog>
+        </Modal>
       </HotKeys>
     )
   }

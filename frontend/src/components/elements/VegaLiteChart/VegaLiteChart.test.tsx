@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,12 @@
  */
 
 import React from "react"
-import { mount } from "enzyme"
+import { shallow } from "lib/test_util"
 import { fromJS } from "immutable"
 import { VegaLiteChart as VegaLiteChartProto } from "autogen/proto"
 
 import mock from "./mock"
-import { PropsWithHeight } from "./VegaLiteChart"
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { VegaLiteChart } = require("./VegaLiteChart")
+import { PropsWithHeight, VegaLiteChart } from "./VegaLiteChart"
 
 const getProps = (
   elementProps: Partial<VegaLiteChartProto> = {}
@@ -40,8 +37,8 @@ const getProps = (
 describe("VegaLiteChart Element", () => {
   it("renders without crashing", () => {
     const props = getProps()
-    const wrapper = mount(<VegaLiteChart {...props} />)
+    const wrapper = shallow(<VegaLiteChart {...props} />)
 
-    expect(wrapper.find(".stVegaLiteChart").length).toBe(1)
+    expect(wrapper.find("StyledVegaLiteChartContainer").length).toBe(1)
   })
 })

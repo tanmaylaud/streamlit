@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,20 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
-import { fromJS } from "immutable"
-import { multiSelectOverrides } from "lib/widgetTheme"
+import { mount } from "lib/test_util"
 import { WidgetStateManager } from "lib/WidgetStateManager"
 
 import { Select as UISelect, TYPE } from "baseui/select"
+import { MultiSelect as MultiSelectProto } from "autogen/proto"
 import Multiselect, { Props } from "./Multiselect"
 
 jest.mock("lib/WidgetStateManager")
 
 const sendBackMsg = jest.fn()
 
-const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
-  element: fromJS({
-    id: 1,
+const getProps = (elementProps: Partial<MultiSelectProto> = {}): Props => ({
+  element: MultiSelectProto.create({
+    id: "1",
     label: "Label",
     default: [0],
     options: ["a", "b", "c"],
@@ -43,7 +42,7 @@ const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
 
 describe("Multiselect widget", () => {
   const props = getProps()
-  const wrapper = shallow(<Multiselect {...props} />)
+  const wrapper = mount(<Multiselect {...props} />)
 
   it("renders without crashing", () => {
     expect(wrapper.find(UISelect).length).toBeTruthy()
@@ -51,8 +50,8 @@ describe("Multiselect widget", () => {
 
   it("should set widget value on did mount", () => {
     expect(props.widgetMgr.setIntArrayValue).toHaveBeenCalledWith(
-      props.element.get("id"),
-      props.element.get("default").toJS(),
+      props.element.id,
+      props.element.default,
       { fromUi: false }
     )
   })
@@ -64,7 +63,6 @@ describe("Multiselect widget", () => {
     // @ts-ignore
     const splittedClassName = className.split(" ")
 
-    expect(splittedClassName).toContain("Widget")
     expect(splittedClassName).toContain("row-widget")
     expect(splittedClassName).toContain("stMultiSelect")
 
@@ -73,7 +71,7 @@ describe("Multiselect widget", () => {
   })
 
   it("should render a label", () => {
-    expect(wrapper.find("label").text()).toBe(props.element.get("label"))
+    expect(wrapper.find("StyledWidgetLabel").text()).toBe(props.element.label)
   })
 
   describe("placeholder", () => {
@@ -87,7 +85,7 @@ describe("Multiselect widget", () => {
       const props = getProps({
         options: [],
       })
-      const wrapper = shallow(<Multiselect {...props} />)
+      const wrapper = mount(<Multiselect {...props} />)
 
       expect(wrapper.find(UISelect).prop("placeholder")).toBe(
         "No options to select."
@@ -103,7 +101,7 @@ describe("Multiselect widget", () => {
       expect(option).toHaveProperty("value")
     })
 
-    expect(options.length).toBe(props.element.get("options").size)
+    expect(options.length).toBe(props.element.options.length)
     expect(wrapper.find(UISelect).prop("labelKey")).toBe("label")
     expect(wrapper.find(UISelect).prop("valueKey")).toBe("value")
   })
@@ -128,6 +126,7 @@ describe("Multiselect widget", () => {
         value: 1,
       },
     })
+    wrapper.update()
 
     expect(wrapper.find(UISelect).prop("value")).toStrictEqual([
       { label: "a", value: "0" },
@@ -143,6 +142,7 @@ describe("Multiselect widget", () => {
         value: 1,
       },
     })
+    wrapper.update()
 
     expect(wrapper.find(UISelect).prop("value")).toStrictEqual([
       { label: "a", value: "0" },
@@ -154,11 +154,8 @@ describe("Multiselect widget", () => {
     wrapper.find(UISelect).prop("onChange")({
       type: "clear",
     })
+    wrapper.update()
 
     expect(wrapper.find(UISelect).prop("value")).toStrictEqual([])
-  })
-
-  it("should have our theme overrides", () => {
-    expect(wrapper.find(UISelect).prop("overrides")).toBe(multiSelectOverrides)
   })
 })

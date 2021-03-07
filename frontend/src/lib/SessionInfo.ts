@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,15 +15,19 @@
  * limitations under the License.
  */
 
+import { Config, EnvironmentInfo, Initialize, UserInfo } from "autogen/proto"
+
 export interface Args {
   sessionId: string
-  streamlitVersion?: string | null
-  pythonVersion?: string | null
-  installationId?: string | null
-  authorEmail?: string | null
-  maxCachedMessageAge?: number | null
-  commandLine?: string | null
-  userMapboxToken?: string | null
+  streamlitVersion: string
+  pythonVersion: string
+  installationId: string
+  installationIdV1: string
+  installationIdV2: string
+  authorEmail: string
+  maxCachedMessageAge: number
+  commandLine: string
+  userMapboxToken: string
 }
 
 export class SessionInfo {
@@ -35,6 +39,10 @@ export class SessionInfo {
   public readonly pythonVersion: string
 
   public readonly installationId: string
+
+  public readonly installationIdV1: string
+
+  public readonly installationIdV2: string
 
   public readonly authorEmail: string
 
@@ -78,11 +86,37 @@ export class SessionInfo {
     return this.current.commandLine === "streamlit hello"
   }
 
-  constructor({
+  public static clearSession(): void {
+    SessionInfo.singleton = undefined
+  }
+
+  /** Create a SessionInfo from the relevant bits of an initialize message. */
+  public static fromInitializeMessage(initialize: Initialize): SessionInfo {
+    const environmentInfo = initialize.environmentInfo as EnvironmentInfo
+    const userInfo = initialize.userInfo as UserInfo
+    const config = initialize.config as Config
+
+    return new SessionInfo({
+      sessionId: initialize.sessionId,
+      streamlitVersion: environmentInfo.streamlitVersion,
+      pythonVersion: environmentInfo.pythonVersion,
+      installationId: userInfo.installationId,
+      installationIdV1: userInfo.installationIdV1,
+      installationIdV2: userInfo.installationIdV2,
+      authorEmail: userInfo.email,
+      maxCachedMessageAge: config.maxCachedMessageAge,
+      commandLine: initialize.commandLine,
+      userMapboxToken: config.mapboxToken,
+    })
+  }
+
+  public constructor({
     sessionId,
     streamlitVersion,
     pythonVersion,
     installationId,
+    installationIdV1,
+    installationIdV2,
     authorEmail,
     maxCachedMessageAge,
     commandLine,
@@ -93,6 +127,8 @@ export class SessionInfo {
       streamlitVersion == null ||
       pythonVersion == null ||
       installationId == null ||
+      installationIdV1 == null ||
+      installationIdV2 == null ||
       authorEmail == null ||
       maxCachedMessageAge == null ||
       commandLine == null ||
@@ -105,6 +141,8 @@ export class SessionInfo {
     this.streamlitVersion = streamlitVersion
     this.pythonVersion = pythonVersion
     this.installationId = installationId
+    this.installationIdV1 = installationIdV1
+    this.installationIdV2 = installationIdV2
     this.authorEmail = authorEmail
     this.maxCachedMessageAge = maxCachedMessageAge
     this.commandLine = commandLine

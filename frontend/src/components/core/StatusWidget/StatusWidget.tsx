@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,14 @@
  * limitations under the License.
  */
 
+import { EmotionIcon } from "@emotion-icons/emotion-icon"
+import { Ellipses, Info, Warning } from "@emotion-icons/open-iconic"
 import { RERUN_PROMPT_MODAL_DIALOG } from "lib/baseconsts"
 import React, { PureComponent, ReactNode } from "react"
 import { HotKeys } from "react-hotkeys"
 import { CSSTransition } from "react-transition-group"
-import { Button, UncontrolledTooltip } from "reactstrap"
+import Button, { Kind, Size } from "components/shared/Button"
+import Tooltip, { Placement } from "components/shared/Tooltip"
 import { SignalConnection } from "typed-signals"
 
 import { ConnectionState } from "lib/ConnectionState"
@@ -34,11 +37,19 @@ import Icon from "components/shared/Icon"
  * from a subpath.
  */
 import iconRunning from "assets/img/icon_running.gif"
-
-import "./StatusWidget.scss"
+import {
+  StyledConnectionStatus,
+  StyledConnectionStatusLabel,
+  StyledReportStatus,
+  StyledReportButtonContainer,
+  StyledReportRunningIcon,
+  StyledReportStatusLabel,
+  StyledShortcutLabel,
+  StyledStatusWidget,
+} from "./styled-components"
 
 /** Component props */
-interface Props {
+export interface StatusWidgetProps {
   /** State of our connection to the server. */
   connectionState: ConnectionState
 
@@ -57,6 +68,9 @@ interface Props {
 
   /** Function called when the user chooses to stop the running report. */
   stopReport: () => void
+
+  /** Allows users to change user settings to allow rerun on save */
+  allowRunOnSave: boolean
 }
 
 /** Component state */
@@ -88,7 +102,7 @@ interface State {
 }
 
 interface ConnectionStateUI {
-  icon: string
+  icon: EmotionIcon
   label: string
   tooltip: string
 }
@@ -105,7 +119,7 @@ const PROMPT_DISPLAY_HOVER_TIMEOUT_MS = 1.0 * 1000
  * connection status, the run-state of our report, and transient report-related
  * events.
  */
-export class StatusWidget extends PureComponent<Props, State> {
+class StatusWidget extends PureComponent<StatusWidgetProps, State> {
   /** onSessionEvent signal connection */
   private sessionEventConn?: SignalConnection
 
@@ -117,7 +131,7 @@ export class StatusWidget extends PureComponent<Props, State> {
     [key: string]: (keyEvent?: KeyboardEvent) => void
   }
 
-  constructor(props: Props) {
+  constructor(props: StatusWidgetProps) {
     super(props)
 
     this.state = {
@@ -136,7 +150,9 @@ export class StatusWidget extends PureComponent<Props, State> {
   }
 
   /** Called by React on prop changes */
-  public static getDerivedStateFromProps(props: Props): Partial<State> | null {
+  public static getDerivedStateFromProps(
+    props: StatusWidgetProps
+  ): Partial<State> | null {
     // Reset transient event-related state when prop changes
     // render that state irrelevant
     if (props.reportRunState === ReportRunState.RUNNING) {
@@ -228,7 +244,9 @@ export class StatusWidget extends PureComponent<Props, State> {
         unmountOnExit={true}
         classNames="StatusWidget"
       >
-        <div key="StatusWidget">{renderView}</div>
+        <StyledStatusWidget key="StatusWidget" data-testid="stStatusWidget">
+          {renderView}
+        </StyledStatusWidget>
       </CSSTransition>
     )
   }
@@ -262,53 +280,58 @@ export class StatusWidget extends PureComponent<Props, State> {
     }
 
     return (
-      <div>
-        <div
-          id="ConnectionStatus"
-          className={this.state.statusMinimized ? "minimized" : ""}
-        >
-          <Icon className="icon" type={ui.icon} />
-          <label>{ui.label}</label>
-        </div>
-        <UncontrolledTooltip placement="bottom" target="ConnectionStatus">
-          {ui.tooltip}
-        </UncontrolledTooltip>
-      </div>
+      <Tooltip
+        content={() => <div>{ui.tooltip}</div>}
+        placement={Placement.BOTTOM}
+      >
+        <StyledConnectionStatus data-testid="stConnectionStatus">
+          <Icon size="sm" content={ui.icon} />
+          <StyledConnectionStatusLabel
+            isMinimized={this.state.statusMinimized}
+          >
+            {ui.label}
+          </StyledConnectionStatusLabel>
+        </StyledConnectionStatus>
+      </Tooltip>
     )
   }
 
   /** "Running... [Stop]" */
   private renderReportIsRunning(): ReactNode {
+    const minimized = this.state.statusMinimized
     const stopRequested =
       this.props.reportRunState === ReportRunState.STOP_REQUESTED
     const stopButton = StatusWidget.promptButton(
       stopRequested ? "Stopping..." : "Stop",
       stopRequested,
-      this.handleStopReportClick
+      this.handleStopReportClick,
+      minimized
+    )
+
+    const runningIcon = (
+      <StyledReportRunningIcon src={iconRunning} alt="Running..." />
     )
 
     return (
-      <div
-        id="ReportStatus"
-        className={
-          this.state.statusMinimized ? "report-is-running-minimized" : ""
-        }
-      >
-        <img
-          className="ReportRunningIcon"
-          src={iconRunning}
-          alt="Running..."
-        />
-        <label>Running...</label>
-        {stopButton}
-        {this.state.statusMinimized ? (
-          <UncontrolledTooltip placement="bottom" target="ReportStatus">
-            This script is currently running
-          </UncontrolledTooltip>
+      <StyledReportStatus>
+        {minimized ? (
+          <Tooltip
+            placement={Placement.BOTTOM}
+            content={() => <div>This script is currently running</div>}
+          >
+            {runningIcon}
+          </Tooltip>
         ) : (
-          ""
+          runningIcon
         )}
-      </div>
+        <StyledReportStatusLabel
+          isMinimized={this.state.statusMinimized}
+          isPrompt={false}
+        >
+          Running...
+        </StyledReportStatusLabel>
+        {stopButton}
+      </StyledReportStatus>
     )
   }
 
@@ -329,25 +352,27 @@ export class StatusWidget extends PureComponent<Props, State> {
           onMouseEnter={this.onReportPromptHover}
           onMouseLeave={this.onReportPromptUnhover}
         >
-          <div
-            id="ReportStatus"
-            className={minimized ? "rerun-prompt-minimized" : ""}
-          >
-            <Icon className="icon" type="info" />
-            <label className="prompt">Source file changed.</label>
+          <StyledReportStatus>
+            <Icon content={Info} margin="0 sm 0 0" color="darkGray" />
+            <StyledReportStatusLabel isMinimized={minimized} isPrompt>
+              Source file changed.
+            </StyledReportStatusLabel>
 
             {StatusWidget.promptButton(
-              <div className="underlineFirstLetter">Rerun</div>,
+              <StyledShortcutLabel>Rerun</StyledShortcutLabel>,
               rerunRequested,
-              this.handleRerunClick
+              this.handleRerunClick,
+              minimized
             )}
 
-            {StatusWidget.promptButton(
-              <div className="underlineFirstLetter">Always rerun</div>,
-              rerunRequested,
-              this.handleAlwaysRerunClick
-            )}
-          </div>
+            {this.props.allowRunOnSave &&
+              StatusWidget.promptButton(
+                <StyledShortcutLabel>Always rerun</StyledShortcutLabel>,
+                rerunRequested,
+                this.handleAlwaysRerunClick,
+                minimized
+              )}
+          </StyledReportStatus>
         </div>
       </HotKeys>
     )
@@ -371,24 +396,29 @@ export class StatusWidget extends PureComponent<Props, State> {
   }
 
   private handleAlwaysRerunClick = (): void => {
-    this.props.rerunReport(true)
+    if (this.props.allowRunOnSave) {
+      this.props.rerunReport(true)
+    }
   }
 
   private static promptButton(
     title: ReactNode,
     disabled: boolean,
-    onClick: () => void
+    onClick: () => void,
+    isMinimized: boolean
   ): ReactNode {
     return (
-      <Button
-        outline
-        size="sm"
-        color="info"
-        disabled={disabled}
-        onClick={onClick}
-      >
-        <div>{title}</div>
-      </Button>
+      <StyledReportButtonContainer isMinimized={isMinimized}>
+        <Button
+          kind={Kind.PRIMARY}
+          size={Size.XSMALL}
+          disabled={disabled}
+          fluidWidth
+          onClick={onClick}
+        >
+          {title}
+        </Button>
+      </StyledReportButtonContainer>
     )
   }
 
@@ -400,7 +430,7 @@ export class StatusWidget extends PureComponent<Props, State> {
       case ConnectionState.PINGING_SERVER:
       case ConnectionState.CONNECTING:
         return {
-          icon: "ellipses",
+          icon: Ellipses,
           label: "Connecting",
           tooltip: "Connecting to Streamlit server",
         }
@@ -412,10 +442,12 @@ export class StatusWidget extends PureComponent<Props, State> {
       case ConnectionState.DISCONNECTED_FOREVER:
       default:
         return {
-          icon: "warning",
+          icon: Warning,
           label: "Error",
           tooltip: "Unable to connect to Streamlit server",
         }
     }
   }
 }
+
+export default StatusWidget

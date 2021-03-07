@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,7 +54,9 @@ if len(files) == 0:
 
 else:
     filename = st.selectbox(
-        "Select a video file from your home directory (%s) to play" % avdir, files, 0,
+        "Select a video file from your home directory (%s) to play" % avdir,
+        files,
+        0,
     )
 
     st.video(os.path.join(avdir, filename))

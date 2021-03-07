@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,18 @@
 
 import React from "react"
 import moment from "moment"
+import { withTheme } from "emotion-theming"
 import { Datepicker as UIDatePicker } from "baseui/datepicker"
-import { Map as ImmutableMap } from "immutable"
+import { PLACEMENT } from "baseui/popover"
+import { DateInput as DateInputProto } from "autogen/proto"
 import { WidgetStateManager, Source } from "lib/WidgetStateManager"
-import { datePickerOverrides } from "lib/widgetTheme"
+import { StyledWidgetLabel } from "components/widgets/BaseWidget"
+import { Theme } from "theme"
 
 export interface Props {
   disabled: boolean
-  element: ImmutableMap<string, any>
+  element: DateInputProto
+  theme: Theme
   widgetMgr: WidgetStateManager
   width: number
 }
@@ -46,11 +50,18 @@ const DATE_FORMAT = "YYYY/MM/DD"
 
 class DateInput extends React.PureComponent<Props, State> {
   public state: State = {
-    values: this.props.element
-      .get("default")
-      .toJS()
-      .map((val: string) => new Date(val)),
-    isRange: this.props.element.get("isRange") || false,
+    values: this.initialValue,
+    isRange: this.props.element.isRange,
+  }
+
+  get initialValue(): Date[] {
+    // If WidgetStateManager knew a value for this widget, initialize to that.
+    // Otherwise, use the default value from the widget protobuf.
+    const widgetId = this.props.element.id
+    const storedValue = this.props.widgetMgr.getStringArrayValue(widgetId)
+    const stringArray =
+      storedValue !== undefined ? storedValue : this.props.element.default
+    return stringArray.map((val: string) => new Date(val))
   }
 
   public componentDidMount(): void {
@@ -58,7 +69,7 @@ class DateInput extends React.PureComponent<Props, State> {
   }
 
   private setWidgetValue = (source: Source): void => {
-    const widgetId: string = this.props.element.get("id")
+    const widgetId = this.props.element.id
 
     this.props.widgetMgr.setStringArrayValue(
       widgetId,
@@ -77,7 +88,7 @@ class DateInput extends React.PureComponent<Props, State> {
 
   private getMaxDate = (): Date | undefined => {
     const { element } = this.props
-    const maxDate = element.get("max")
+    const maxDate = element.max
 
     return maxDate && maxDate.length > 0
       ? moment(maxDate, DATE_FORMAT).toDate()
@@ -85,22 +96,96 @@ class DateInput extends React.PureComponent<Props, State> {
   }
 
   public render = (): React.ReactNode => {
-    const { width, element, disabled } = this.props
+    const { width, element, disabled, theme } = this.props
     const { values, isRange } = this.state
+    const { colors, fontSizes } = theme
 
     const style = { width }
-    const label = element.get("label")
-    const minDate = moment(element.get("min"), DATE_FORMAT).toDate()
+    const minDate = moment(element.min, DATE_FORMAT).toDate()
     const maxDate = this.getMaxDate()
 
     return (
-      <div className="Widget stDateInput" style={style}>
-        <label>{label}</label>
+      <div className="stDateInput" style={style}>
+        <StyledWidgetLabel>{element.label}</StyledWidgetLabel>
         <UIDatePicker
           formatString="yyyy/MM/dd"
           disabled={disabled}
           onChange={this.handleChange}
-          overrides={datePickerOverrides}
+          overrides={{
+            Popover: {
+              props: {
+                placement: PLACEMENT.bottomLeft,
+              },
+            },
+            CalendarContainer: {
+              style: {
+                fontSize: fontSizes.smDefault,
+              },
+            },
+            CalendarHeader: {
+              style: {
+                // Make header look nicer.
+                backgroundColor: colors.gray,
+              },
+            },
+            MonthHeader: {
+              style: {
+                // Make header look nicer.
+                backgroundColor: colors.gray,
+              },
+            },
+            Week: {
+              style: {
+                fontSize: fontSizes.smDefault,
+              },
+            },
+            Day: {
+              style: ({ $selected }: { $selected: boolean }) => ({
+                "::after": {
+                  borderColor: $selected ? colors.transparent : "",
+                },
+              }),
+            },
+            PrevButton: {
+              style: () => ({
+                // Align icon to the center of the button.
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                // Remove primary-color click effect.
+                ":active": {
+                  backgroundColor: colors.transparent,
+                },
+                ":focus": {
+                  backgroundColor: colors.transparent,
+                  outline: 0,
+                },
+              }),
+            },
+            NextButton: {
+              style: {
+                // Align icon to the center of the button.
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                // Remove primary-color click effect.
+                ":active": {
+                  backgroundColor: colors.transparent,
+                },
+                ":focus": {
+                  backgroundColor: colors.transparent,
+                  outline: 0,
+                },
+              },
+            },
+            Input: {
+              props: {
+                // The default maskChar ` ` causes empty dates to display as ` / / `
+                // Clearing the maskChar so empty dates will not display
+                maskChar: null,
+              },
+            },
+          }}
           value={values}
           minDate={minDate}
           maxDate={maxDate}
@@ -111,4 +196,4 @@ class DateInput extends React.PureComponent<Props, State> {
   }
 }
 
-export default DateInput
+export default withTheme(DateInput)

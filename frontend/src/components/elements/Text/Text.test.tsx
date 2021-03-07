@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,12 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
-import { Map as ImmutableMap } from "immutable"
-import Text, { Props } from "./Text"
+import { shallow } from "lib/test_util"
+import { Text as TextProto } from "autogen/proto"
+import Text, { TextProps } from "./Text"
 
-const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
-  element: ImmutableMap({
+const getProps = (elementProps: Partial<TextProto> = {}): TextProps => ({
+  element: TextProto.create({
     body: "some plain text",
     ...elementProps,
   }),
@@ -33,8 +33,6 @@ describe("Text element", () => {
     const props = getProps()
     const wrap = shallow(<Text {...props} />)
     expect(wrap).toBeDefined()
-    const elem = wrap.get(0)
     expect(wrap.text()).toBe("some plain text")
-    expect(elem.props.className.includes("stText")).toBeTruthy()
   })
 })

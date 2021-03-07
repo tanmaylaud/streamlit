@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,8 @@ function setSessionInfo(
     streamlitVersion: "sv",
     pythonVersion: "pv",
     installationId: "iid",
+    installationIdV1: "iid1",
+    installationIdV2: "iid2",
     authorEmail: "ae",
     maxCachedMessageAge: 2,
     commandLine,
@@ -102,7 +104,7 @@ describe("MapboxToken", () => {
 
   xit("Errors if not localhost and missing token", async () => {
     delete window.location
-    window.location = { hostname: "http://streamlit.io" } as Location
+    window.location = { hostname: "https://streamlit.io" } as Location
     setSessionInfo("")
 
     await expect(MapboxToken.get()).rejects.toThrow("No Mapbox token provided")

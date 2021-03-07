@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -257,6 +257,7 @@ class ConfigTest(unittest.TestCase):
                 "client",
                 "deprecation",
                 "global",
+                "logger",
                 "mapbox",
                 "runner",
                 "s3",
@@ -274,7 +275,10 @@ class ConfigTest(unittest.TestCase):
                 "browser.serverPort",
                 "client.caching",
                 "client.displayEnabled",
+                "client.showErrorDetails",
                 "deprecation.showfileUploaderEncoding",
+                "deprecation.showImageFormat",
+                "deprecation.showPyplotGlobalUse",
                 "global.developmentMode",
                 "global.disableWatchdogWarning",
                 "global.logLevel",
@@ -285,6 +289,8 @@ class ConfigTest(unittest.TestCase):
                 "global.showWarningOnDirectExecution",
                 "global.suppressDeprecationWarnings",
                 "global.unitTest",
+                "logger.level",
+                "logger.messageFormat",
                 "runner.magicEnabled",
                 "runner.installTracer",
                 "runner.fixMatplotlib",
@@ -306,6 +312,7 @@ class ConfigTest(unittest.TestCase):
                 "server.headless",
                 "server.liveSave",
                 "server.address",
+                "server.allowRunOnSave",
                 "server.port",
                 "server.runOnSave",
                 "server.maxUploadSize",
@@ -351,12 +358,13 @@ class ConfigTest(unittest.TestCase):
             "server.port does not work when global.developmentMode is true.",
         )
 
-    def test_check_conflicts_server_csrf(self):
+    @patch("streamlit.logger.get_logger")
+    def test_check_conflicts_server_csrf(self, get_logger):
         config._set_option("server.enableXsrfProtection", True, "test")
         config._set_option("server.enableCORS", True, "test")
-        with patch("streamlit.config.LOGGER") as patched_logger:
-            config._check_conflicts()
-            patched_logger.warning.assert_called_once()
+        mock_logger = get_logger()
+        config._check_conflicts()
+        mock_logger.warning.assert_called_once()
 
     def test_check_conflicts_browser_serverport(self):
         config._set_option("global.developmentMode", True, "test")
@@ -515,11 +523,11 @@ class ConfigTest(unittest.TestCase):
 
     def test_global_log_level_debug(self):
         config.set_option("global.developmentMode", True)
-        self.assertEqual("debug", config.get_option("global.logLevel"))
+        self.assertEqual("debug", config.get_option("logger.level"))
 
     def test_global_log_level(self):
         config.set_option("global.developmentMode", False)
-        self.assertEqual("info", config.get_option("global.logLevel"))
+        self.assertEqual("info", config.get_option("logger.level"))
 
     @parameterized.expand([(True, True), (True, False), (False, False), (False, True)])
     def test_on_config_parsed(self, config_parsed, connect_signal):

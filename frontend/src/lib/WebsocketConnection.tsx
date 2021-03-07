@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
  * limitations under the License.
  */
 
+import styled from "@emotion/styled"
 import { BackMsg, ForwardMsg, IBackMsg } from "autogen/proto"
 
 import axios from "axios"
@@ -197,14 +198,23 @@ export class WebsocketConnection {
   private setFsmState(state: ConnectionState, errMsg?: string): void {
     logMessage(LOG, `New state: ${state}`)
     this.state = state
-    this.args.onConnectionStateChange(state, errMsg)
 
-    // Perform actions when entering certain states.
+    // Perform pre-callback actions when entering certain states.
     switch (this.state) {
       case ConnectionState.PINGING_SERVER:
-        this.pingServer()
+        this.pingServer(
+          SessionInfo.isSet() ? SessionInfo.current.commandLine : undefined
+        )
         break
 
+      default:
+        break
+    }
+
+    this.args.onConnectionStateChange(state, errMsg)
+
+    // Perform post-callback actions when entering certain states.
+    switch (this.state) {
       case ConnectionState.CONNECTING:
         this.connectToWebSocket()
         break
@@ -213,8 +223,6 @@ export class WebsocketConnection {
         this.cancelConnectionAttempt()
         break
 
-      case ConnectionState.CONNECTED:
-      case ConnectionState.INITIAL:
       default:
         break
     }
@@ -303,7 +311,7 @@ export class WebsocketConnection {
     )
   }
 
-  private async pingServer(): Promise<void> {
+  private async pingServer(userCommandLine?: string): Promise<void> {
     const uris = this.args.baseUriPartsList.map((_, i) =>
       buildHttpUri(this.args.baseUriPartsList[i], SERVER_PING_PATH)
     )
@@ -311,7 +319,8 @@ export class WebsocketConnection {
     this.uriIndex = await doHealthPing(
       uris,
       PING_RETRY_PERIOD_MS,
-      this.args.onRetry
+      this.args.onRetry,
+      userCommandLine
     )
 
     this.stepFsm("SERVER_PING_SUCCEEDED")
@@ -483,6 +492,13 @@ export class WebsocketConnection {
   }
 }
 
+const StyledBashCode = styled.code({
+  "&::before": {
+    content: '"$"',
+    marginRight: "1ex",
+  },
+})
+
 /**
  * Attempts to connect to the URIs in uriList (in round-robin fashion) and
  * retries forever until one of the URIs responds with 'ok'.
@@ -491,7 +507,8 @@ export class WebsocketConnection {
 function doHealthPing(
   uriList: string[],
   timeoutMs: number,
-  retryCallback: OnRetry
+  retryCallback: OnRetry,
+  userCommandLine?: string
 ): Promise<number> {
   const resolver = new Resolver<number>()
   let totalTries = 0
@@ -526,9 +543,7 @@ function doHealthPing(
     const uri = new URL(uriList[uriNumber])
 
     if (uri.hostname === "localhost") {
-      const commandLine = SessionInfo.isSet()
-        ? SessionInfo.current.commandLine
-        : "streamlit run yourscript.py"
+      const commandLine = userCommandLine || "streamlit run yourscript.py"
       retry(
         <Fragment>
           <p>
@@ -536,7 +551,7 @@ function doHealthPing(
             just restart it in your terminal:
           </p>
           <pre>
-            <code className="bash">{commandLine}</code>
+            <StyledBashCode>{commandLine}</StyledBashCode>
           </pre>
         </Fragment>
       )

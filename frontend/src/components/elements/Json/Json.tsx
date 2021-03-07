@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,49 +15,51 @@
  * limitations under the License.
  */
 
-import React, { ReactNode } from "react"
-
+import React, { ReactElement } from "react"
 import ReactJson from "react-json-view"
-import { Map as ImmutableMap } from "immutable"
+import JSON5 from "json5"
+import { Json as JsonProto } from "autogen/proto"
+import { useTheme } from "emotion-theming"
+import { Theme } from "theme"
 
-import "assets/css/write.scss"
-
-interface Props {
+export interface JsonProps {
   width: number
-  element: ImmutableMap<string, any>
+  element: JsonProto
 }
 
 /**
  * Functional element representing JSON structured text.
  */
-class Json extends React.PureComponent<Props> {
-  public render(): ReactNode {
-    const { element, width } = this.props
-    const body = element.get("body")
-    const styleProp = { width }
+export default function Json({ width, element }: JsonProps): ReactElement {
+  const styleProp = { width }
+  const theme: Theme = useTheme()
 
-    let bodyObject
+  let bodyObject
+  try {
+    bodyObject = JSON.parse(element.body)
+  } catch (e) {
     try {
-      bodyObject = JSON.parse(body)
-    } catch (e) {
+      bodyObject = JSON5.parse(element.body)
+    } catch (json5Error) {
       // If content fails to parse as Json, rebuild the error message
       // to show where the problem occurred.
       const pos = parseInt(e.message.replace(/[^0-9]/g, ""), 10)
-      e.message += `\n${body.substr(0, pos + 1)} ← here`
+      e.message += `\n${element.body.substr(0, pos + 1)} ← here`
       throw e
     }
-    return (
-      <div className="json-text-container stJson" style={styleProp}>
-        <ReactJson
-          src={bodyObject}
-          displayDataTypes={false}
-          displayObjectSize={false}
-          name={false}
-          style={{ font: "" }} // Unset so we can style via a CSS file.
-        />
-      </div>
-    )
   }
+  return (
+    <div data-testid="stJson" style={styleProp}>
+      <ReactJson
+        src={bodyObject}
+        displayDataTypes={false}
+        displayObjectSize={false}
+        name={false}
+        style={{
+          fontFamily: theme.fonts.mono,
+          fontSize: theme.fontSizes.smDefault,
+        }}
+      />
+    </div>
+  )
 }
-
-export default Json

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,41 +16,37 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
-import { fromJS } from "immutable"
+import { select } from "d3"
+import { logError } from "lib/log"
+import { mount } from "lib/test_util"
+import { GraphVizChart as GraphVizChartProto } from "autogen/proto"
+import { GraphVizChart, GraphVizChartProps } from "./GraphVizChart"
 
-import { PropsWithHeight } from "./GraphVizChart"
-
-const mockLogError = {
-  logError: jest.fn(),
-}
-
-const mockGraphViz = jest.fn().mockReturnValue({
-  zoom: () => ({
-    fit: () => ({
-      scale: () => ({
-        renderDot: () => ({
-          on: jest.fn(),
+jest.mock("d3", () => ({
+  select: jest.fn().mockReturnValue({
+    graphviz: jest.fn().mockReturnValue({
+      zoom: () => ({
+        fit: () => ({
+          scale: () => ({
+            renderDot: () => ({
+              on: jest.fn(),
+            }),
+          }),
         }),
       }),
     }),
   }),
-})
-
-jest.mock("d3", () => ({
-  select: jest.fn().mockReturnValue({
-    graphviz: mockGraphViz,
-  }),
 }))
 jest.mock("d3-graphviz")
-jest.mock("lib/log", () => mockLogError)
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { GraphVizChart } = require("./GraphVizChart")
+jest.mock("lib/log", () => ({
+  logError: jest.fn(),
+  logMessage: jest.fn(),
+}))
 
 const getProps = (
-  elementProps: Record<string, unknown> = {}
-): PropsWithHeight => ({
-  element: fromJS({
+  elementProps: Partial<GraphVizChartProto> = {}
+): GraphVizChartProps => ({
+  element: GraphVizChartProto.create({
     spec: `digraph "Hello World" {Hello -> World}`,
     ...elementProps,
   }),
@@ -61,32 +57,35 @@ const getProps = (
 
 describe("GraphVizChart Element", () => {
   beforeEach(() => {
-    mockLogError.logError.mockClear()
+    // @ts-ignore
+    logError.mockClear()
   })
 
   it("renders without crashing", () => {
     const props = getProps()
-    const wrapper = shallow(<GraphVizChart {...props} />)
+    const wrapper = mount(<GraphVizChart {...props} />)
 
-    expect(wrapper.find(".stGraphVizChart").length).toBe(1)
-    expect(mockLogError.logError).not.toHaveBeenCalled()
-    expect(mockGraphViz).toHaveBeenCalled()
+    expect(wrapper.find("StyledGraphVizChart").length).toBe(1)
+    expect(logError).not.toHaveBeenCalled()
+    // @ts-ignore
+    expect(select().graphviz).toHaveBeenCalled()
   })
 
   it("should call updateChart and log error when crashes", () => {
     const props = getProps({
       spec: "crash",
     })
-    const wrapper = shallow(<GraphVizChart {...props} />)
+    const wrapper = mount(<GraphVizChart {...props} />)
 
-    mockLogError.logError.mockClear()
+    // @ts-ignore
+    logError.mockClear()
 
     wrapper.setProps({
       width: 400,
       height: 500,
     })
 
-    expect(mockLogError.logError).toHaveBeenCalledTimes(1)
+    expect(logError).toHaveBeenCalledTimes(1)
   })
 
   it("should render with height and width", () => {
@@ -96,8 +95,8 @@ describe("GraphVizChart Element", () => {
       width: 400,
       index: 1,
     }
-    const wrapper = shallow(<GraphVizChart {...props} />)
+    const wrapper = mount(<GraphVizChart {...props} />)
 
-    expect(wrapper.find(".stGraphVizChart").props()).toMatchSnapshot()
+    expect(wrapper.find("StyledGraphVizChart").props()).toMatchSnapshot()
   })
 })

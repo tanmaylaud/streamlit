@@ -1,4 +1,20 @@
-const webpack = require("webpack")
+/**
+ * @license
+ * Copyright 2018-2021 Streamlit Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 const HardSourceWebpackPlugin = require("hard-source-webpack-plugin")
 
 module.exports = {
@@ -15,14 +31,21 @@ module.exports = {
       return jestConfig
     },
   },
+  babel: {
+    plugins: ["emotion"],
+  },
   webpack: {
-    configure: (webpackConfig, { env, paths }) => {
+    configure: webpackConfig => {
       webpackConfig.resolve.mainFields = ["main", "module"]
 
-      // HardSourceWebpackPlugin adds aggressive build caching
-      // to speed up our slow builds.
-      // https://github.com/mzgoddard/hard-source-webpack-plugin
-      webpackConfig.plugins.unshift(new HardSourceWebpackPlugin())
+      // hardsource appears to make React app server start more slowly in our
+      // end-to-end tests, so adding an environment variable to disable it
+      if (!process.env.DISABLE_HARDSOURCE_CACHING) {
+        // HardSourceWebpackPlugin adds aggressive build caching
+        // to speed up our slow builds.
+        // https://github.com/mzgoddard/hard-source-webpack-plugin
+        webpackConfig.plugins.unshift(new HardSourceWebpackPlugin())
+      }
 
       const minimizerIndex = webpackConfig.optimization.minimizer.findIndex(
         item => item.options.terserOptions
@@ -40,17 +63,5 @@ module.exports = {
 
       return webpackConfig
     },
-    plugins: [
-      // Hide critical dependency warnings from Webpack, as CircleCI treats them as errors.
-      // https://medium.com/tomincode/hiding-critical-dependency-warnings-from-webpack-c76ccdb1f6c1
-      // Remove after updating bokehjs to 2.0.0
-      // https://github.com/bokeh/bokeh/issues/9594#issuecomment-577227353
-      new webpack.ContextReplacementPlugin(/\/bokehjs\//, data => {
-        for (let i in data.dependencies) {
-          delete data.dependencies[i].critical
-        }
-        return data
-      }),
-    ],
   },
 }

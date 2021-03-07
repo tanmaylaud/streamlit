@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, mock_open
 import unittest
+import pytest
 
 import tornado.gen
 import tornado.testing
 
-from streamlit.report_session import ReportSession
-from streamlit.report_session import ReportSessionState
+import streamlit.report_session as report_session
+from streamlit.report_session import ReportSession, ReportSessionState
 from streamlit.report_thread import ReportContext
 from streamlit.report_thread import add_report_ctx
 from streamlit.report_thread import get_report_ctx
@@ -27,8 +28,15 @@ from streamlit.script_runner import ScriptRunner
 from streamlit.uploaded_file_manager import UploadedFileManager
 from streamlit.proto.ForwardMsg_pb2 import ForwardMsg
 from streamlit.proto.StaticManifest_pb2 import StaticManifest
+from streamlit.errors import StreamlitAPIException
+from streamlit.widgets import Widgets
 from tests.mock_storage import MockStorage
 import streamlit as st
+
+
+@pytest.fixture
+def del_path(monkeypatch):
+    monkeypatch.setenv("PATH", "")
 
 
 class ReportSessionTest(unittest.TestCase):
@@ -36,8 +44,7 @@ class ReportSessionTest(unittest.TestCase):
     @patch("streamlit.report_session.Report")
     @patch("streamlit.report_session.LocalSourcesWatcher")
     def test_enqueue_without_tracer(self, _1, _2, patched_config):
-        """Make sure we try to handle execution control requests.
-        """
+        """Make sure we try to handle execution control requests."""
 
         def get_option(name):
             if name == "server.runOnSave":
@@ -56,17 +63,28 @@ class ReportSessionTest(unittest.TestCase):
         mock_script_runner._install_tracer = ScriptRunner._install_tracer
         rs._scriptrunner = mock_script_runner
 
-        rs.enqueue({"dontcare": 123})
+        mock_msg = MagicMock()
+        rs.enqueue(mock_msg)
 
         func = mock_script_runner.maybe_handle_execution_control_request
 
         # Expect func to be called only once, inside enqueue().
         func.assert_called_once()
 
+    @patch("streamlit.report_session.LocalSourcesWatcher")
+    @pytest.mark.usefixtures("del_path")
+    def test_get_deploy_params_with_no_git(self, _1):
+        """Make sure we try to handle execution control requests."""
+        rs = ReportSession(None, report_session.__file__, "", UploadedFileManager())
+
+        self.assertIsNone(rs.get_deploy_params())
+
     @patch("streamlit.report_session.config")
     @patch("streamlit.report_session.Report")
     @patch("streamlit.report_session.LocalSourcesWatcher")
-    def test_enqueue_with_tracer(self, _1, _2, patched_config):
+    @patch("streamlit.util.os.makedirs")
+    @patch("streamlit.file_util.open", mock_open())
+    def test_enqueue_with_tracer(self, _1, _2, patched_config, _4):
         """Make sure there is no lock contention when tracer is on.
 
         When the tracer is set up, we want
@@ -91,7 +109,8 @@ class ReportSessionTest(unittest.TestCase):
         mock_script_runner = MagicMock()
         rs._scriptrunner = mock_script_runner
 
-        rs.enqueue({"dontcare": 123})
+        mock_msg = MagicMock()
+        rs.enqueue(mock_msg)
 
         func = mock_script_runner.maybe_handle_execution_control_request
 
@@ -147,7 +166,9 @@ class ReportSessionSerializationTest(tornado.testing.AsyncTestCase):
         rs._report.report_id = "TestReportID"
 
         orig_ctx = get_report_ctx()
-        ctx = ReportContext("TestSessionID", rs._report.enqueue, "", None, None, None)
+        ctx = ReportContext(
+            "TestSessionID", rs._report.enqueue, "", Widgets(), UploadedFileManager()
+        )
         add_report_ctx(ctx=ctx)
 
         rs._scriptrunner = MagicMock()

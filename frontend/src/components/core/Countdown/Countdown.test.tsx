@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
+import { shallow } from "lib/test_util"
 
 import Countdown from "./Countdown"
 
@@ -24,7 +24,6 @@ describe("Countdown Component", () => {
   it("should render without crashing", () => {
     const wrapper = shallow(<Countdown countdown={10} />)
 
-    expect(wrapper.html()).toBeDefined()
     expect(wrapper.find("span").text()).toBe("10")
   })
 })

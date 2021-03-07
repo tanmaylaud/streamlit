@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@ st.pydeck_chart(
                 pickable=True,
                 stroked=True,
                 filled=True,
-                extruded=False,
                 get_hexagon="hex",
                 get_fill_color="[0, 255, 0]",
                 get_line_color=[255, 255, 255],

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,27 +16,32 @@
  */
 
 import React from "react"
-import { mount } from "enzyme"
+import { mount } from "lib/test_util"
 import { fromJS } from "immutable"
 
-import { Table as ReactTable } from "reactstrap"
-import mock from "./mock"
-import { Table, Props } from "./Table"
+import { table, emptyTable } from "./mock"
+import { Table, TableProps } from "./Table"
 
-const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
-  element: fromJS({
-    ...mock,
-    ...elementProps,
-  }),
-  width: 0,
+const getProps = (elementProps: Record<string, unknown> = {}): TableProps => ({
+  element: fromJS(elementProps),
 })
 
 describe("Table Element", () => {
   it("renders without crashing", () => {
-    const props = getProps()
+    const props = getProps(table)
     const wrapper = mount(<Table {...props} />)
 
-    expect(wrapper.find(ReactTable).length).toBe(1)
-    expect(wrapper.find(".stTable").length).toBe(1)
+    expect(wrapper.find("StyledTable").length).toBe(1)
+    expect(wrapper.find("StyledTableContainer").length).toBe(1)
+    expect(wrapper.find("StyledEmptyTableCell").exists()).toBeFalsy()
+  })
+
+  it("renders an empty row", () => {
+    const props = getProps(emptyTable)
+    const wrapper = mount(<Table {...props} />)
+
+    expect(wrapper.find("StyledTable").length).toBe(1)
+    expect(wrapper.find("StyledTableContainer").length).toBe(1)
+    expect(wrapper.find("StyledEmptyTableCell").exists()).toBeTruthy()
   })
 })

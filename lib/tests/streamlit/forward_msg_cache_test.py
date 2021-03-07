@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,21 +17,19 @@
 from unittest.mock import MagicMock
 import unittest
 
-from streamlit import config
+from streamlit import config, RootContainer
 from streamlit import report_session
 from streamlit.forward_msg_cache import ForwardMsgCache
 from streamlit.forward_msg_cache import create_reference_msg
 from streamlit.forward_msg_cache import populate_hash_if_needed
-from streamlit.elements import data_frame_proto
-from streamlit.proto.BlockPath_pb2 import BlockPath
+from streamlit.elements import data_frame
 from streamlit.proto.ForwardMsg_pb2 import ForwardMsg
 
 
 def _create_dataframe_msg(df, id=1):
     msg = ForwardMsg()
-    msg.metadata.delta_id = id
-    msg.metadata.parent_block.container = BlockPath.SIDEBAR
-    data_frame_proto.marshall_data_frame(df, msg.delta.new_element.data_frame)
+    msg.metadata.delta_path[:] = [RootContainer.SIDEBAR, id]
+    data_frame.marshall_data_frame(df, msg.delta.new_element.data_frame)
     return msg
 
 

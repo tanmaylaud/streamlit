@@ -32,11 +32,11 @@ RUN curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.35.2/install.sh
 
 # node vars
 ARG NVM_DIR=$HOME/.nvm
-ARG NODE_VERSION=v10.16.3
+ARG NODE_VERSION=v14.15.3
 
 # install node and yarn
 RUN source $NVM_DIR/nvm.sh \
-    && nvm install $NODE_VERSION --lts=dubnium \
+    && nvm install $NODE_VERSION --lts=fermium \
     && npm install -g yarn
 
 # node path
@@ -60,12 +60,12 @@ COPY --chown=$USER frontend/package.json frontend/yarn.lock ./frontend/
 # install node modules
 RUN make react-init
 
-# copy pipfile
-COPY --chown=$USER lib/Pipfile.locks/python-3.7.4 ./lib/Pipfile.locks/
+# copy Pipfile and test-requirements.txt
 COPY --chown=$USER lib/Pipfile ./lib/
+COPY --chown=$USER lib/test-requirements.txt ./lib/
 
 # install python modules
-RUN source venv/bin/activate && make pipenv-lock CIRCLECI=true
+RUN source venv/bin/activate && make pipenv-install CIRCLECI=true
 
 # copy streamlit code
 COPY --chown=$USER . .

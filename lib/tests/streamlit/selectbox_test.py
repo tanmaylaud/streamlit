@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """selectbox unit tests."""
-
+import pytest
 import numpy as np
 import pandas as pd
 from parameterized import parameterized
@@ -54,6 +54,7 @@ class SelectboxTest(testutil.DeltaGeneratorTestCase):
             (["male", "female"], ["male", "female"]),
             (np.array(["m", "f"]), ["m", "f"]),
             (pd.Series(np.array(["male", "female"])), ["male", "female"]),
+            (pd.DataFrame({"options": ["male", "female"]}), ["male", "female"]),
         ]
     )
     def test_option_types(self, options, proto_options):
@@ -64,6 +65,11 @@ class SelectboxTest(testutil.DeltaGeneratorTestCase):
         self.assertEqual(c.label, "the label")
         self.assertEqual(c.default, 0)
         self.assertEqual(c.options, proto_options)
+
+    def test_not_iterable_option_types(self):
+        """Test that it supports different types of options."""
+        with pytest.raises(TypeError):
+            st.selectbox("the label", 123)
 
     def test_cast_options_to_string(self):
         """Test that it casts options to string."""

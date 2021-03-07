@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,12 +15,11 @@
  * limitations under the License.
  */
 
-import React, { ComponentType, PureComponent } from "react"
-import { makeElementWithInfoText } from "lib/utils"
-import hoistNonReactStatics from "hoist-non-react-statics"
-import { MapboxToken } from "hocs/withMapboxToken/MapboxToken"
-
 import Alert from "components/elements/Alert"
+import { Kind } from "components/shared/AlertContainer"
+import { MapboxToken } from "hocs/withMapboxToken/MapboxToken"
+import hoistNonReactStatics from "hoist-non-react-statics"
+import React, { ComponentType, PureComponent } from "react"
 import MapboxTokenError from "./MapboxTokenError"
 
 interface Props {
@@ -96,12 +95,7 @@ const withMapboxToken = (deltaType: string) => (
 
       // If our mapboxToken hasn't been retrieved yet, show a loading alert.
       if (isFetching) {
-        return (
-          <Alert
-            element={makeElementWithInfoText("Loading...").get("alert")}
-            width={width}
-          />
-        )
+        return <Alert body={"Loading..."} kind={Kind.INFO} width={width} />
       }
 
       // We have the mapbox token. Pass it through to our component.

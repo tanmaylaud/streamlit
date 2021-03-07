@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,7 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
-import { fromJS } from "immutable"
+import { mount } from "lib/test_util"
 import { WidgetStateManager } from "lib/WidgetStateManager"
 import { DateInput as DateInputProto } from "autogen/proto"
 
@@ -29,8 +28,8 @@ jest.mock("lib/WidgetStateManager")
 const sendBackMsg = jest.fn()
 
 const getProps = (elementProps: Partial<DateInputProto> = {}): Props => ({
-  element: fromJS({
-    id: 1,
+  element: DateInputProto.create({
+    id: "1",
     label: "Label",
     default: ["1970/01/01"],
     min: "1970/1/1",
@@ -43,20 +42,20 @@ const getProps = (elementProps: Partial<DateInputProto> = {}): Props => ({
 
 describe("DateInput widget", () => {
   const props = getProps()
-  const wrapper = shallow(<DateInput {...props} />)
+  const wrapper = mount(<DateInput {...props} />)
 
   it("renders without crashing", () => {
     expect(wrapper.find(UIDatePicker).length).toBe(1)
   })
 
   it("should render a label", () => {
-    expect(wrapper.find("label").text()).toBe(props.element.get("label"))
+    expect(wrapper.find("StyledWidgetLabel").text()).toBe(props.element.label)
   })
 
   it("should set widget value on did mount", () => {
     expect(props.widgetMgr.setStringArrayValue).toHaveBeenCalledWith(
-      props.element.get("id"),
-      props.element.get("default").toJS(),
+      props.element.id,
+      props.element.default,
       { fromUi: false }
     )
   })
@@ -68,7 +67,6 @@ describe("DateInput widget", () => {
     // @ts-ignore
     const splittedClassName = className.split(" ")
 
-    expect(splittedClassName).toContain("Widget")
     expect(splittedClassName).toContain("stDateInput")
 
     // @ts-ignore
@@ -77,7 +75,7 @@ describe("DateInput widget", () => {
 
   it("should render a default value", () => {
     expect(wrapper.find(UIDatePicker).prop("value")).toStrictEqual([
-      new Date(props.element.get("default").toJS()),
+      new Date(props.element.default[0]),
     ])
   })
 
@@ -96,12 +94,15 @@ describe("DateInput widget", () => {
     wrapper.find(UIDatePicker).prop("onChange")({
       date: newDate,
     })
+    wrapper.update()
 
     expect(wrapper.find(UIDatePicker).prop("value")).toStrictEqual([newDate])
     expect(props.widgetMgr.setStringArrayValue).toHaveBeenCalledWith(
-      props.element.get("id"),
+      props.element.id,
       ["2020/02/06"],
-      { fromUi: true }
+      {
+        fromUi: true,
+      }
     )
   })
 
@@ -116,7 +117,7 @@ describe("DateInput widget", () => {
     const props = getProps({
       max: "2030/02/06",
     })
-    const wrapper = shallow(<DateInput {...props} />)
+    const wrapper = mount(<DateInput {...props} />)
 
     expect(wrapper.find(UIDatePicker).prop("maxDate")).toStrictEqual(
       new Date("2030/02/06")
@@ -127,7 +128,7 @@ describe("DateInput widget", () => {
     const props = getProps({
       min: "0001/01/01",
     })
-    const wrapper = shallow(<DateInput {...props} />)
+    const wrapper = mount(<DateInput {...props} />)
 
     expect(wrapper.find(UIDatePicker).prop("minDate")).toStrictEqual(
       new Date("0001-01-01T00:00:00")
@@ -138,7 +139,7 @@ describe("DateInput widget", () => {
     const props = getProps({
       max: "0001/01/01",
     })
-    const wrapper = shallow(<DateInput {...props} />)
+    const wrapper = mount(<DateInput {...props} />)
 
     expect(wrapper.find(UIDatePicker).prop("maxDate")).toStrictEqual(
       new Date("0001-01-01T00:00:00")

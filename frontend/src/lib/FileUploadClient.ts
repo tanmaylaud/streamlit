@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,11 @@
 import { CancelToken } from "axios"
 import HttpClient from "lib/HttpClient"
 import { SessionInfo } from "lib/SessionInfo"
-import { buildHttpUri } from "lib/UriUtil"
+
+interface FileWithId {
+  file: File
+  id: string
+}
 
 /**
  * Handles uploading files to the server.
@@ -28,34 +32,39 @@ export class FileUploadClient extends HttpClient {
    * Upload a file to the server. It will be associated with this browser's sessionID.
    *
    * @param widgetId: the ID of the FileUploader widget that's doing the upload.
-   * @param files: the files to upload.
+   * @param filesWithIds: the files to upload.
    * @param onUploadProgress: an optional function that will be called repeatedly with progress events during the upload.
    * @param cancelToken: an optional axios CancelToken that can be used to cancel the in-progress upload.
+   * @param replace: an optional boolean to indicate if the file should replace existing files associated with the widget.
    */
   public async uploadFiles(
     widgetId: string,
-    files: File[],
+    filesWithIds: FileWithId[],
     onUploadProgress?: (progressEvent: any) => void,
-    cancelToken?: CancelToken
+    cancelToken?: CancelToken,
+    replace?: boolean
   ): Promise<void> {
-    const serverURI = this.getServerUri()
-    if (serverURI === undefined) {
-      throw new Error("Cannot upload file: not connected to a server")
-    }
-
     const form = new FormData()
     form.append("sessionId", SessionInfo.current.sessionId)
     form.append("widgetId", widgetId)
-    for (const file of files) {
-      form.append(file.name, file)
+
+    if (replace) form.append("replace", "true")
+    for (const f of filesWithIds) {
+      form.append(f.id, f.file, f.file.name)
     }
 
-    await this.request({
+    await this.request("upload_file", {
       cancelToken,
-      url: buildHttpUri(serverURI, "upload_file"),
       method: "POST",
       data: form,
       onUploadProgress,
     })
+  }
+
+  public async delete(widgetId: string, fileId: string): Promise<void> {
+    await this.request(
+      `upload_file/${SessionInfo.current.sessionId}/${widgetId}/${fileId}`,
+      { method: "DELETE" }
+    )
   }
 }

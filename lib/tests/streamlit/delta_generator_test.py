@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,9 +14,7 @@
 
 """DeltaGenerator Unittest."""
 
-from unittest import mock
 import json
-import unittest
 
 try:
     from inspect import signature
@@ -28,20 +26,17 @@ from parameterized import parameterized
 import pandas as pd
 
 from streamlit.delta_generator import DeltaGenerator
-from streamlit.delta_generator import _build_duplicate_widget_message
-from streamlit.cursor import LockedCursor
+from streamlit.elements.utils import _build_duplicate_widget_message, register_widget
+from streamlit.cursor import LockedCursor, make_delta_path
 from streamlit.errors import DuplicateWidgetID
 from streamlit.errors import StreamlitAPIException
-from streamlit.proto.BlockPath_pb2 import BlockPath
 from streamlit.proto.Delta_pb2 import Delta
 from streamlit.proto.Element_pb2 import Element
 from streamlit.proto.TextArea_pb2 import TextArea
 from streamlit.proto.TextInput_pb2 import TextInput
-from streamlit.delta_generator import (
-    _wraps_with_cleaned_sig,
-    _with_element,
-    _set_widget_id,
-)
+from streamlit.proto.Empty_pb2 import Empty as EmptyProto
+from streamlit.proto.RootContainer_pb2 import RootContainer
+from streamlit.proto.Text_pb2 import Text as TextProto
 from tests import testutil
 import streamlit as st
 
@@ -107,15 +102,10 @@ class FakeDeltaGenerator(object):
         """
         self._exception_msg = str(e)
 
-    def _enqueue_new_element_delta(self, marshall_element, delta_type, last_index):
-        """Fake enqueue new element delta.
-
-        The real DeltaGenerator method actually enqueues the deltas but
-        to test _with_element we just need this method to exist.  The
-        real enqueue_new_element_delta will be tested later on.
-        """
+    def _enqueue(self, delta_type, element_proto):
         delta = Delta()
-        marshall_element(delta.new_element)
+        el_proto = getattr(delta.new_element, delta_type)
+        el_proto.CopyFrom(element_proto)
         return delta
 
 
@@ -140,12 +130,12 @@ class DeltaGeneratorTest(testutil.DeltaGeneratorTestCase):
 
     def test_sidebar_nonexistent_method(self):
         with self.assertRaises(Exception) as ctx:
-            st.sidebar.write()
+            st.sidebar.echo()
 
         self.assertEqual(
             str(ctx.exception),
-            "Method `write()` does not exist for `st.sidebar`. "
-            "Did you mean `st.write()`?",
+            "Method `echo()` does not exist for `st.sidebar`. "
+            "Did you mean `st.echo()`?",
         )
 
     @parameterized.expand(
@@ -176,7 +166,7 @@ class DeltaGeneratorTest(testutil.DeltaGeneratorTestCase):
                 "add_rows",
                 "(data=None, **kwargs)",
             ),
-            (st.write, "streamlit", "write", "(*args, **kwargs)"),
+            (st.write, "streamlit.delta_generator", "write", "(*args, **kwargs)"),
         ]
     )
     def test_function_signatures(self, func, module, name, sig):
@@ -184,43 +174,6 @@ class DeltaGeneratorTest(testutil.DeltaGeneratorTestCase):
         self.assertEqual(name, func.__name__)
         actual_sig = signature(func)
         self.assertEqual(str(actual_sig), sig)
-
-    def test_wraps_with_cleaned_sig(self):
-        wrapped_function = _wraps_with_cleaned_sig(FakeDeltaGenerator.fake_text, 2)
-        wrapped = wrapped_function.keywords.get("wrapped")
-
-        # Check meta data.
-        self.assertEqual("delta_generator_test", wrapped.__module__)
-        self.assertEqual("fake_text", wrapped.__name__)
-        self.assertEqual("Fake text delta generator.", wrapped.__doc__)
-
-        # Verify original signature
-        sig = signature(FakeDeltaGenerator.fake_text)
-        self.assertEqual(str(sig), "(self, element, body)")
-
-        # Check clean signature
-        sig = signature(wrapped)
-        self.assertEqual(str(sig), "(body)")
-
-    def test_with_element(self):
-        wrapped = _with_element(FakeDeltaGenerator.fake_text)
-
-        dg = FakeDeltaGenerator()
-        data = "some_text"
-        # This would really look like st.text(data) but since we're
-        # testing the wrapper, it looks like this.
-        element = wrapped(dg, data)
-        self.assertEqual(element.new_element.text.body, data)
-
-    def test_with_element_exception(self):
-        wrapped = _with_element(FakeDeltaGenerator.fake_text_raise_exception)
-
-        dg = FakeDeltaGenerator()
-        data = "some_text"
-        with self.assertRaises(Exception) as ctx:
-            wrapped(dg, data)
-
-        self.assertTrue("Exception in fake_text_raise_exception" in str(ctx.exception))
 
     def set_widget_requires_args(self):
         st.text_input()
@@ -249,23 +202,23 @@ class DeltaGeneratorTest(testutil.DeltaGeneratorTestCase):
             create_widget()
             with self.assertRaises(DuplicateWidgetID) as ctx:
                 create_widget()
-                self.assertIn(
-                    _build_duplicate_widget_message(
-                        widget_func_name=widget_type, user_key=None
-                    ),
-                    ctx.exception,
-                )
+            self.assertEqual(
+                _build_duplicate_widget_message(
+                    widget_func_name=widget_type, user_key=None
+                ),
+                str(ctx.exception),
+            )
 
             # Test duplicate user-specified widget key
             create_widget("key")
             with self.assertRaises(DuplicateWidgetID) as ctx:
                 create_widget("key")
-                self.assertIn(
-                    _build_duplicate_widget_message(
-                        widget_func_name=widget_type, user_key="key"
-                    ),
-                    ctx.exception,
-                )
+            self.assertEqual(
+                _build_duplicate_widget_message(
+                    widget_func_name=widget_type, user_key="key"
+                ),
+                str(ctx.exception),
+            )
 
 
 class DeltaGeneratorClassTest(testutil.DeltaGeneratorTestCase):
@@ -279,61 +232,151 @@ class DeltaGeneratorClassTest(testutil.DeltaGeneratorTestCase):
 
     def test_constructor_with_id(self):
         """Test DeltaGenerator() with an id."""
-        cursor = LockedCursor(index=1234)
-        dg = DeltaGenerator(cursor=cursor)
+        cursor = LockedCursor(root_container=RootContainer.MAIN, index=1234)
+        dg = DeltaGenerator(root_container=RootContainer.MAIN, cursor=cursor)
         self.assertTrue(dg._cursor.is_locked)
         self.assertEqual(dg._cursor.index, 1234)
 
-    def test_enqueue_new_element_delta_null(self):
+    def test_enqueue_null(self):
         # Test "Null" Delta generators
-        dg = DeltaGenerator(container=None)
-        enqueue_fn = lambda x: None
-        new_dg = dg._enqueue_new_element_delta(enqueue_fn, None)
+        dg = DeltaGenerator(root_container=None)
+        new_dg = dg._enqueue("empty", EmptyProto())
         self.assertEqual(dg, new_dg)
 
-    @parameterized.expand([(BlockPath.MAIN,), (BlockPath.SIDEBAR,)])
-    def test_enqueue_new_element_delta(self, container):
-        dg = DeltaGenerator(container=container)
+    @parameterized.expand([(RootContainer.MAIN,), (RootContainer.SIDEBAR,)])
+    def test_enqueue(self, container):
+        dg = DeltaGenerator(root_container=container)
         self.assertEqual(0, dg._cursor.index)
-        self.assertEqual(container, dg._container)
+        self.assertEqual(container, dg._root_container)
 
         test_data = "some test data"
-        # Use FakeDeltaGenerator.fake_text cause if we use
-        # DeltaGenerator.text, it calls enqueue_new_element_delta
-        # automatically.  Ideally I should unwrap it.
-        fake_dg = FakeDeltaGenerator()
+        text_proto = TextProto()
+        text_proto.body = test_data
+        new_dg = dg._enqueue("text", text_proto)
 
-        def marshall_element(element):
-            fake_dg.fake_text(element, test_data)
-
-        new_dg = dg._enqueue_new_element_delta(marshall_element, None)
         self.assertNotEqual(dg, new_dg)
         self.assertEqual(1, dg._cursor.index)
-        self.assertEqual(container, new_dg._container)
+        self.assertEqual(container, new_dg._root_container)
 
         element = self.get_delta_from_queue().new_element
         self.assertEqual(element.text.body, test_data)
 
-    def test_enqueue_new_element_delta_same_id(self):
-        cursor = LockedCursor(index=123)
-        dg = DeltaGenerator(cursor=cursor)
+    def test_enqueue_same_id(self):
+        cursor = LockedCursor(root_container=RootContainer.MAIN, index=123)
+        dg = DeltaGenerator(root_container=RootContainer.MAIN, cursor=cursor)
         self.assertEqual(123, dg._cursor.index)
 
         test_data = "some test data"
-        # Use FakeDeltaGenerator.fake_text cause if we use
-        # DeltaGenerator.text, it calls enqueue_new_element_delta
-        # automatically.  Ideally I should unwrap it.
-        fake_dg = FakeDeltaGenerator()
+        text_proto = TextProto()
+        text_proto.body = test_data
+        new_dg = dg._enqueue("text", text_proto)
 
-        def marshall_element(element):
-            fake_dg.fake_text(element, test_data)
-
-        new_dg = dg._enqueue_new_element_delta(marshall_element, None)
         self.assertEqual(dg._cursor, new_dg._cursor)
 
         msg = self.get_message_from_queue()
-        self.assertEqual(123, msg.metadata.delta_id)
+        # The last element in delta_path is the delta's index in its container.
+        self.assertEqual(
+            make_delta_path(RootContainer.MAIN, (), 123), msg.metadata.delta_path
+        )
         self.assertEqual(msg.delta.new_element.text.body, test_data)
+
+
+class DeltaGeneratorContainerTest(testutil.DeltaGeneratorTestCase):
+    """Test DeltaGenerator Container."""
+
+    def test_container(self):
+        container = st.beta_container()
+
+        self.assertIsInstance(container, DeltaGenerator)
+        self.assertFalse(container._cursor.is_locked)
+
+    def test_container_paths(self):
+        level3 = st.beta_container().beta_container().beta_container()
+        level3.markdown("hi")
+        level3.markdown("bye")
+
+        msg = self.get_message_from_queue()
+        self.assertEqual(
+            make_delta_path(RootContainer.MAIN, (0, 0, 0), 1), msg.metadata.delta_path
+        )
+
+
+class DeltaGeneratorColumnsTest(testutil.DeltaGeneratorTestCase):
+    """Test DeltaGenerator Columns."""
+
+    def test_equal_columns(self):
+        for column in st.beta_columns(4):
+            self.assertIsInstance(column, DeltaGenerator)
+            self.assertFalse(column._cursor.is_locked)
+
+    def test_variable_columns(self):
+        weights = [3, 1, 4, 1, 5, 9]
+        st.beta_columns(weights)
+
+        for i, w in enumerate(weights):
+            # Pull the delta from the back of the queue, using negative index
+            delta = self.get_delta_from_queue(i - len(weights))
+            self.assertEqual(delta.add_block.column.weight, w)
+
+    def test_bad_columns(self):
+        with self.assertRaises(StreamlitAPIException):
+            st.beta_columns(-1337)
+
+        with self.assertRaises(StreamlitAPIException):
+            st.beta_columns([1, 0, -1])
+
+    def test_nested_columns(self):
+        level1, _ = st.beta_columns(2)
+        with self.assertRaises(StreamlitAPIException):
+            level2, _ = level1.beta_columns(2)
+
+
+class DeltaGeneratorExpanderTest(testutil.DeltaGeneratorTestCase):
+    def test_nested_expanders(self):
+        level1 = st.beta_expander("level 1")
+        with self.assertRaises(StreamlitAPIException):
+            level2 = level1.beta_expander("level 2")
+
+
+class DeltaGeneratorWithTest(testutil.DeltaGeneratorTestCase):
+    """Test the `with DG` feature"""
+
+    def test_with(self):
+        # Same as test_container_paths, but using `with` syntax
+        level3 = st.beta_container().beta_container().beta_container()
+        with level3:
+            st.markdown("hi")
+            st.markdown("bye")
+
+        msg = self.get_message_from_queue()
+        self.assertEqual(
+            make_delta_path(RootContainer.MAIN, (0, 0, 0), 1), msg.metadata.delta_path
+        )
+
+        # Now we're out of the `with` block, commands should use the main dg
+        st.markdown("outside")
+
+        msg = self.get_message_from_queue()
+        self.assertEqual(
+            make_delta_path(RootContainer.MAIN, (), 1), msg.metadata.delta_path
+        )
+
+    def test_nested_with(self):
+        with st.beta_container():
+            with st.beta_container():
+                st.markdown("Level 2 with")
+                msg = self.get_message_from_queue()
+                self.assertEqual(
+                    make_delta_path(RootContainer.MAIN, (0, 0), 0),
+                    msg.metadata.delta_path,
+                )
+
+            st.markdown("Level 1 with")
+            msg = self.get_message_from_queue()
+            self.assertEqual(
+                make_delta_path(RootContainer.MAIN, (0,), 1),
+                msg.metadata.delta_path,
+            )
 
 
 class DeltaGeneratorWriteTest(testutil.DeltaGeneratorTestCase):
@@ -403,7 +446,7 @@ class DeltaGeneratorWriteTest(testutil.DeltaGeneratorTestCase):
         st.empty()
 
         element = self.get_delta_from_queue().new_element
-        self.assertEqual(True, element.empty.unused)
+        self.assertEqual(element.empty, EmptyProto())
 
 
 class DeltaGeneratorProgressTest(testutil.DeltaGeneratorTestCase):
@@ -517,10 +560,10 @@ class WidgetIdText(testutil.DeltaGeneratorTestCase):
         element2 = Element()
         element2.text_input.CopyFrom(text_input2)
 
-        _set_widget_id("text_input", element1)
+        register_widget("text_input", element1.text_input)
 
         with self.assertRaises(DuplicateWidgetID):
-            _set_widget_id("text_input", element2)
+            register_widget("text_input", element2.text_input)
 
     def test_ids_are_diff_when_labels_are_diff(self):
         text_input1 = TextInput()
@@ -537,8 +580,8 @@ class WidgetIdText(testutil.DeltaGeneratorTestCase):
         element2 = Element()
         element2.text_input.CopyFrom(text_input2)
 
-        _set_widget_id("text_input", element1)
-        _set_widget_id("text_input", element2)
+        register_widget("text_input", element1.text_input)
+        register_widget("text_input", element2.text_input)
 
         self.assertNotEqual(element1.text_input.id, element2.text_input.id)
 
@@ -557,8 +600,8 @@ class WidgetIdText(testutil.DeltaGeneratorTestCase):
         element2 = Element()
         element2.text_area.CopyFrom(text_area2)
 
-        _set_widget_id("text_input", element1)
-        _set_widget_id("text_input", element2)
+        register_widget("text_input", element1.text_input)
+        register_widget("text_input", element2.text_input)
 
         self.assertNotEqual(element1.text_input.id, element2.text_area.id)
 
@@ -577,10 +620,10 @@ class WidgetIdText(testutil.DeltaGeneratorTestCase):
         element2 = Element()
         element2.text_input.CopyFrom(text_input2)
 
-        _set_widget_id("text_input", element1, user_key="some_key")
+        register_widget("text_input", element1.text_input, user_key="some_key")
 
         with self.assertRaises(DuplicateWidgetID):
-            _set_widget_id("text_input", element2, user_key="some_key")
+            register_widget("text_input", element2.text_input, user_key="some_key")
 
     def test_ids_are_diff_when_keys_are_diff(self):
         text_input1 = TextInput()
@@ -597,8 +640,8 @@ class WidgetIdText(testutil.DeltaGeneratorTestCase):
         element2 = Element()
         element2.text_input.CopyFrom(text_input2)
 
-        _set_widget_id("text_input", element1, user_key="some_key1")
-        _set_widget_id("text_input", element2, user_key="some_key2")
+        register_widget("text_input", element1.text_input, user_key="some_key1")
+        register_widget("text_input", element2.text_input, user_key="some_key2")
 
         self.assertNotEqual(element1.text_input.id, element2.text_input.id)
 
@@ -617,8 +660,8 @@ class WidgetIdText(testutil.DeltaGeneratorTestCase):
         element2 = Element()
         element2.text_input.CopyFrom(text_input2)
 
-        _set_widget_id("text_input", element1, user_key="some_key1")
-        _set_widget_id("text_input", element2, user_key="some_key1")
+        register_widget("text_input", element1.text_input, user_key="some_key1")
+        register_widget("text_input", element2.text_input, user_key="some_key1")
 
         self.assertNotEqual(element1.text_input.id, element2.text_input.id)
 

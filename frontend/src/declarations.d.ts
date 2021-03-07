@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,3 +29,12 @@ declare module "@deck.gl/geo-layers"
 declare module "@loaders.gl/core"
 
 declare module "@loaders.gl/csv"
+
+declare module "@emotion/styled" {
+  import { CreateStyled } from "@emotion/styled/types/index"
+  import { Theme } from "theme"
+
+  export * from "@emotion/styled/types/index"
+  const customStyled: CreateStyled<Theme>
+  export default customStyled
+}

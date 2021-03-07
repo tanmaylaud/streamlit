@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,12 @@
  * limitations under the License.
  */
 
+import { pick } from "lodash"
 import { SessionInfo } from "lib/SessionInfo"
+import { initializeSegment } from "vendor/Segment"
+import { StreamlitShareMetadata } from "hocs/withS4ACommunication/types"
 import { IS_DEV_ENV, IS_SHARED_REPORT } from "./baseconsts"
 import { logAlways } from "./log"
-import { initializeSegment } from "./Segment"
 
 /**
  * The analytics is the Segment.io object. It is initialized in Segment.ts
@@ -79,6 +81,8 @@ export class MetricsManager {
    */
   private reportHash = "Not initialized"
 
+  private metadata: StreamlitShareMetadata = {}
+
   /**
    * Singleton MetricsManager object. The reason we're using a singleton here
    * instead of just exporting a module-level instance is so we can easily
@@ -97,11 +101,17 @@ export class MetricsManager {
     if (this.actuallySendMetrics || IS_SHARED_REPORT) {
       // Segment will not initialize if this is rendered with SSR
       initializeSegment()
+
+      const userTraits: any = {
+        ...MetricsManager.getInstallationData(),
+        ...this.getHostTrackingData(),
+      }
+
       // Only record the user's email if they entered a non-empty one.
-      const userTraits: any = {}
       if (SessionInfo.current.authorEmail !== "") {
         userTraits.authoremail = SessionInfo.current.authorEmail
       }
+
       this.identify(SessionInfo.current.installationId, userTraits)
       this.sendPendingEvents()
     }
@@ -169,6 +179,8 @@ export class MetricsManager {
   private send(evName: string, evData: Record<string, unknown> = {}): void {
     const data = {
       ...evData,
+      ...this.getHostTrackingData(),
+      ...MetricsManager.getInstallationData(),
       reportHash: this.reportHash,
       dev: IS_DEV_ENV,
       source: "browser",
@@ -195,11 +207,42 @@ export class MetricsManager {
   // Wrap analytics methods for mocking:
   // eslint-disable-next-line class-methods-use-this
   private identify(id: string, data: Record<string, unknown>): void {
-    analytics.identify(id, data)
+    if (IS_DEV_ENV) {
+      logAlways("[Dev mode] Not sending id: ", id, data)
+    } else {
+      analytics.identify(id, data)
+    }
   }
 
   // eslint-disable-next-line class-methods-use-this
   private track(evName: string, data: Record<string, unknown>): void {
     analytics.track(evName, data)
+  }
+
+  // Get the installation IDs from the session
+  private static getInstallationData(): Record<string, unknown> {
+    return {
+      machineIdV1: SessionInfo.current.installationIdV1,
+      machineIdV2: SessionInfo.current.installationIdV2,
+    }
+  }
+
+  public setMetadata(metadata: StreamlitShareMetadata): void {
+    this.metadata = metadata
+  }
+
+  // Use the tracking data injected by S4A if the app is hosted there
+  private getHostTrackingData(): StreamlitShareMetadata {
+    if (this.metadata) {
+      return pick(this.metadata, [
+        "hostedAt",
+        "owner",
+        "repo",
+        "branch",
+        "mainModule",
+        "creatorId",
+      ])
+    }
+    return {}
   }
 }

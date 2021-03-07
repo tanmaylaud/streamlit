@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,54 +15,60 @@
  * limitations under the License.
  */
 
-import React, { PureComponent, ReactNode } from "react"
-import { Map as ImmutableMap } from "immutable"
+import React, { ReactElement, useEffect, useCallback } from "react"
 import { embed as BokehEmbed } from "@bokeh/bokehjs"
 import withFullScreenWrapper from "hocs/withFullScreenWrapper"
+import { BokehChart as BokehChartProto } from "autogen/proto"
 
-interface Props {
+export interface BokehChartProps {
   width: number
-  element: ImmutableMap<string, any>
+  element: BokehChartProto
   index: number
-}
-
-export interface PropsWithHeight extends Props {
-  height: number | undefined
+  height?: number
 }
 
 interface Dimensions {
-  width: number
-  height: number
+  chartWidth: number
+  chartHeight: number
 }
 
-export class BokehChart extends PureComponent<PropsWithHeight> {
-  private chartId = `bokeh-chart-${this.props.index}`
+export function BokehChart({
+  width,
+  element,
+  index,
+  height,
+}: BokehChartProps): ReactElement {
+  const chartId = `bokeh-chart-${index}`
 
-  private getChartData = (): any => {
-    const figure = this.props.element.get("figure")
-    return JSON.parse(figure)
-  }
+  const memoizedGetChartData = useCallback(() => {
+    return JSON.parse(element.figure)
+  }, [element])
 
-  public getChartDimensions = (plot: any): Dimensions => {
-    const useContainerWidth = this.props.element.get("useContainerWidth")
+  const getChartDimensions = (plot: any): Dimensions => {
     // Default values
-    let width = plot.attributes.plot_width
-    let height = plot.attributes.plot_height
+    let chartWidth: number = plot.attributes.plot_width
+    let chartHeight: number = plot.attributes.plot_height
 
     // if is not fullscreen and useContainerWidth==false, we should use default values
-    if (this.props.height) {
+    if (height) {
       // fullscreen
-      width = this.props.width
-      height = this.props.height
-    } else if (useContainerWidth) {
-      width = this.props.width
+      chartWidth = width
+      chartHeight = height
+    } else if (element.useContainerWidth) {
+      chartWidth = width
     }
 
-    return { width, height }
+    return { chartWidth, chartHeight }
   }
 
-  private updateChart = (data: any): void => {
-    const chart = document.getElementById(this.chartId)
+  const removeAllChildNodes = (element: Node): void => {
+    while (element.lastChild) {
+      element.lastChild.remove()
+    }
+  }
+
+  const updateChart = (data: any): void => {
+    const chart = document.getElementById(chartId)
 
     /**
      * When you create a bokeh chart in your python script, you can specify
@@ -77,41 +83,47 @@ export class BokehChart extends PureComponent<PropsWithHeight> {
         : undefined
 
     if (plot) {
-      const { width, height } = this.getChartDimensions(plot)
+      const { chartWidth, chartHeight } = getChartDimensions(plot)
 
-      if (width > 0) {
-        plot.attributes.plot_width = width
+      if (chartWidth > 0) {
+        plot.attributes.plot_width = chartWidth
       }
-      if (height > 0) {
-        plot.attributes.plot_height = height
+      if (chartHeight > 0) {
+        plot.attributes.plot_height = chartHeight
       }
     }
 
     if (chart !== null) {
-      this.removeAllChildNodes(chart)
-      BokehEmbed.embed_item(data, this.chartId)
+      removeAllChildNodes(chart)
+      // embed_item is actually an async function call, so a race condition
+      // can occur if updateChart is called twice, leading to two Bokeh charts
+      // to be embedded at the same time.
+      BokehEmbed.embed_item(data, chartId)
     }
   }
 
-  private removeAllChildNodes = (element: Node): void => {
-    while (element.lastChild) {
-      element.lastChild.remove()
-    }
-  }
+  const memoizedUpdateChart = useCallback(updateChart, [
+    width,
+    height,
+    element,
+    index,
+  ])
 
-  public componentDidMount = (): void => {
-    const data = this.getChartData()
-    this.updateChart(data)
-  }
+  // We only want useEffect to run once per prop update, because of the embed_item
+  // race condition mentioned per run. Thus we pass in all props and methods
+  // into the useEffect dependency array.
+  useEffect(() => {
+    memoizedUpdateChart(memoizedGetChartData())
+  }, [
+    width,
+    height,
+    element,
+    index,
+    memoizedGetChartData,
+    memoizedUpdateChart,
+  ])
 
-  public componentDidUpdate = (): void => {
-    const data = this.getChartData()
-    this.updateChart(data)
-  }
-
-  public render = (): ReactNode => (
-    <div id={this.chartId} className="stBokehChart" />
-  )
+  return <div id={chartId} className="stBokehChart" />
 }
 
 export default withFullScreenWrapper(BokehChart)

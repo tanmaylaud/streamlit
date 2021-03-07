@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,22 +16,21 @@
  */
 
 import React from "react"
-import { fromJS } from "immutable"
-import { shallow } from "enzyme"
-import { buttonOverrides } from "lib/widgetTheme"
+import { shallow } from "lib/test_util"
 import { WidgetStateManager } from "lib/WidgetStateManager"
 
-import { Button as UIButton } from "baseui/button"
+import UIButton from "components/shared/Button"
 
-import Button, { Props } from "./Button"
+import { Button as ButtonProto } from "autogen/proto"
+import Button, { ButtonProps } from "./Button"
 
 jest.mock("lib/WidgetStateManager")
 
 const sendBackMsg = jest.fn()
 
-const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
-  element: fromJS({
-    id: 1,
+const getProps = (elementProps: Partial<ButtonProto> = {}): ButtonProps => ({
+  element: ButtonProto.create({
+    id: "1",
     label: "Label",
     ...elementProps,
   }),
@@ -57,8 +56,6 @@ describe("Button widget", () => {
     // @ts-ignore
     const splittedClassName = className.split(" ")
 
-    expect(splittedClassName).toContain("Widget")
-    expect(splittedClassName).toContain("row-widget")
     expect(splittedClassName).toContain("stButton")
 
     // @ts-ignore
@@ -71,9 +68,7 @@ describe("Button widget", () => {
     const wrappedUIButton = wrapper.find(UIButton)
 
     expect(wrappedUIButton.length).toBe(1)
-    expect(wrappedUIButton.props().children).toBe(
-      getProps().element.get("label")
-    )
+    expect(wrappedUIButton.props().children).toBe(getProps().element.label)
   })
 
   describe("UIButton props should work", () => {
@@ -86,7 +81,7 @@ describe("Button widget", () => {
       wrappedUIButton.simulate("click")
 
       expect(props.widgetMgr.setTriggerValue).toHaveBeenCalledWith(
-        props.element.get("id"),
+        props.element.id,
         { fromUi: true }
       )
     })
@@ -98,15 +93,6 @@ describe("Button widget", () => {
       const wrappedUIButton = wrapper.find(UIButton)
 
       expect(wrappedUIButton.props().disabled).toBe(props.disabled)
-    })
-
-    it("overrides prop", () => {
-      const props = getProps()
-      const wrapper = shallow(<Button {...props} />)
-
-      const wrappedUIButton = wrapper.find(UIButton)
-
-      expect(wrappedUIButton.props().overrides).toBe(buttonOverrides)
     })
   })
 })

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,13 +17,13 @@
 
 import React from "react"
 import DeckGL from "deck.gl"
-import { shallow } from "enzyme"
-import { fromJS } from "immutable"
+import { shallow } from "lib/test_util"
 
+import { DeckGlJsonChart as DeckGlJsonChartProto } from "autogen/proto"
 import { DeckGlJsonChart, PropsWithHeight } from "./DeckGlJsonChart"
 
 const getProps = (
-  elementProps: Record<string, unknown> = {},
+  elementProps: Partial<DeckGlJsonChartProto> = {},
   initialViewStateProps: Record<string, unknown> = {}
 ): PropsWithHeight => {
   // prettier-ignore
@@ -35,7 +35,7 @@ const getProps = (
   }
 
   return {
-    element: fromJS({
+    element: DeckGlJsonChartProto.create({
       json: JSON.stringify(json),
       ...elementProps,
     }),

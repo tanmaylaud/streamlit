@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,14 @@
 
 import React from "react"
 import { shallow } from "enzyme"
-import { fromJS } from "immutable"
 
-import DocString, { Props } from "./DocString"
+import { DocString as DocStringProto } from "autogen/proto"
+import DocString, { DocStringProps } from "./DocString"
 
-const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
-  element: fromJS({
+const getProps = (
+  elementProps: Partial<DocStringProto> = {}
+): DocStringProps => ({
+  element: DocStringProto.create({
     name: "balloons",
     module: "streamlit",
     docString:
@@ -43,24 +45,22 @@ describe("DocString Element", () => {
   })
 
   it("should render a doc-string", () => {
-    expect(wrapper.find(".doc-string").text()).toBe(
-      props.element.get("docString")
+    expect(wrapper.find("StyledDocString").text()).toBe(
+      props.element.docString
     )
   })
 
   describe("doc-header", () => {
     it("should render module", () => {
-      expect(wrapper.find(".doc-header .doc-module").text()).toBe("streamlit.")
+      expect(wrapper.find("StyledDocModule").text()).toBe("streamlit.")
     })
 
     it("should render a name", () => {
-      expect(wrapper.find(".doc-header .doc-name").text()).toBe("balloons")
+      expect(wrapper.find("StyledDocName").text()).toBe("balloons")
     })
 
     it("should render a signature", () => {
-      expect(wrapper.find(".doc-header .doc-signature").text()).toBe(
-        "(element)"
-      )
+      expect(wrapper.find(".doc-signature").text()).toBe("(element)")
     })
 
     describe("should render empty when", () => {
@@ -87,7 +87,7 @@ describe("DocString Element", () => {
       })
       const wrapper = shallow(<DocString {...props} />)
 
-      expect(wrapper.find(".doc-header").text()).toBe("<class 'method'>")
+      expect(wrapper.find("StyledDocHeader").text()).toBe("<class 'method'>")
     })
   })
 })

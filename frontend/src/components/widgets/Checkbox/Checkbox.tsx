@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,17 @@
  */
 
 import React from "react"
+import { withTheme } from "emotion-theming"
 import { Checkbox as UICheckbox } from "baseui/checkbox"
-import { Map as ImmutableMap } from "immutable"
+import { Checkbox as CheckboxProto } from "autogen/proto"
+import { transparentize } from "color2k"
 import { WidgetStateManager, Source } from "lib/WidgetStateManager"
-import { checkboxOverrides } from "lib/widgetTheme"
+import { Theme } from "theme"
 
 export interface Props {
   disabled: boolean
-  element: ImmutableMap<string, any>
+  element: CheckboxProto
+  theme: Theme
   widgetMgr: WidgetStateManager
   width: number
 }
@@ -38,7 +41,15 @@ interface State {
 
 class Checkbox extends React.PureComponent<Props, State> {
   public state: State = {
-    value: this.props.element.get("default"),
+    value: this.initialValue,
+  }
+
+  get initialValue(): boolean {
+    // If WidgetStateManager knew a value for this widget, initialize to that.
+    // Otherwise, use the default value from the widget protobuf.
+    const widgetId = this.props.element.id
+    const storedValue = this.props.widgetMgr.getBoolValue(widgetId)
+    return storedValue !== undefined ? storedValue : this.props.element.default
   }
 
   public componentDidMount(): void {
@@ -46,7 +57,7 @@ class Checkbox extends React.PureComponent<Props, State> {
   }
 
   private setWidgetValue = (source: Source): void => {
-    const widgetId: string = this.props.element.get("id")
+    const widgetId = this.props.element.id
     this.props.widgetMgr.setBoolValue(widgetId, this.state.value, source)
   }
 
@@ -56,22 +67,61 @@ class Checkbox extends React.PureComponent<Props, State> {
   }
 
   public render = (): React.ReactNode => {
-    const label = this.props.element.get("label")
-    const style = { width: this.props.width }
+    const { theme, width } = this.props
+    const { colors, fontSizes, radii } = theme
+    const style = { width }
 
+    // TODO Check the Widget usage
     return (
-      <div className="Widget row-widget stCheckbox" style={style}>
+      <div className="row-widget stCheckbox" style={style}>
         <UICheckbox
           checked={this.state.value}
           disabled={this.props.disabled}
           onChange={this.onChange}
-          overrides={checkboxOverrides}
+          overrides={{
+            Root: {
+              style: ({ $isFocused }: { $isFocused: boolean }) => ({
+                marginBottom: 0,
+                marginTop: 0,
+                paddingRight: fontSizes.twoThirdSmDefault,
+                backgroundColor: $isFocused ? colors.lightestGray : "",
+                borderTopLeftRadius: radii.md,
+                borderTopRightRadius: radii.md,
+                borderBottomLeftRadius: radii.md,
+                borderBottomRightRadius: radii.md,
+              }),
+            },
+            Checkmark: {
+              style: ({
+                $isFocusVisible,
+                $checked,
+              }: {
+                $isFocusVisible: boolean
+                $checked: boolean
+              }) => ({
+                borderLeftWidth: "2px",
+                borderRightWidth: "2px",
+                borderTopWidth: "2px",
+                borderBottomWidth: "2px",
+                outline: 0,
+                boxShadow:
+                  $isFocusVisible && $checked
+                    ? `0 0 0 0.2rem ${transparentize(colors.primary, 0.5)}`
+                    : "",
+              }),
+            },
+            Label: {
+              style: {
+                color: colors.bodyText,
+              },
+            },
+          }}
         >
-          {label}
+          {this.props.element.label}
         </UICheckbox>
       </div>
     )
   }
 }
 
-export default Checkbox
+export default withTheme(Checkbox)

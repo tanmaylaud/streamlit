@@ -1,0 +1,45 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`App renders without crashing 1`] = `
+<StatefulPopover
+  accessibilityType="menu"
+  content={[Function]}
+  dismissOnClickOutside={true}
+  dismissOnEsc={true}
+  focusLock={true}
+  ignoreBoundary={false}
+  onMouseEnterDelay={200}
+  onMouseLeaveDelay={200}
+  overrides={
+    Object {
+      "Body": Object {
+        "props": Object {
+          "data-testid": "main-menu-popover",
+        },
+      },
+    }
+  }
+  placement="bottomRight"
+  popoverMargin={8}
+  showArrow={false}
+  stateReducer={[Function]}
+  triggerType="click"
+>
+  <span
+    id="MainMenu"
+  >
+    <Button
+      kind="icon"
+    >
+      <Icon
+        content={
+          Object {
+            "$$typeof": Symbol(react.forward_ref),
+            "render": [Function],
+          }
+        }
+      />
+    </Button>
+  </span>
+</StatefulPopover>
+`;

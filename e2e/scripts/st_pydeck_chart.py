@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,7 +33,10 @@ st.pydeck_chart(
     pdk.Deck(
         map_style="mapbox://styles/mapbox/light-v9",
         initial_view_state=pdk.ViewState(
-            latitude=37.76, longitude=-122.4, zoom=11, pitch=50,
+            latitude=37.76,
+            longitude=-122.4,
+            zoom=11,
+            pitch=50,
         ),
         layers=[
             pdk.Layer(

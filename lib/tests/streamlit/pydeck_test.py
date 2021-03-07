@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,13 @@ class PyDeckTest(testutil.DeltaGeneratorTestCase):
     def test_basic(self):
         """Test that pydeck object orks."""
 
-        st.pydeck_chart(pdk.Deck(layers=[pdk.Layer("ScatterplotLayer", data=df1),]))
+        st.pydeck_chart(
+            pdk.Deck(
+                layers=[
+                    pdk.Layer("ScatterplotLayer", data=df1),
+                ]
+            )
+        )
 
         el = self.get_delta_from_queue().new_element
         actual = json.loads(el.deck_gl_json_chart.json)

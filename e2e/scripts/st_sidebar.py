@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,3 +24,5 @@ st.write("Value 2:", w2)
 
 x = st.sidebar.text("overwrite me")
 x.text("overwritten")
+
+y = st.sidebar.text_input("type here")

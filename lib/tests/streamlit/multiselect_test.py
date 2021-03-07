@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ class Multiselectbox(testutil.DeltaGeneratorTestCase):
             (["male", "female"], ["male", "female"]),
             (np.array(["m", "f"]), ["m", "f"]),
             (pd.Series(np.array(["male", "female"])), ["male", "female"]),
+            (pd.DataFrame({"options": ["male", "female"]}), ["male", "female"]),
         ]
     )
     def test_option_types(self, options, proto_options):
@@ -113,6 +114,7 @@ class Multiselectbox(testutil.DeltaGeneratorTestCase):
             ((i for i in ("Tea", "Water")), [1, 2]),
             (np.array(["Coffee", "Tea"]), [0, 1]),
             (pd.Series(np.array(["Coffee", "Tea"])), [0, 1]),
+            ("Coffee", [0]),
         ]
     )
     def test_default_types(self, defaults, expected):

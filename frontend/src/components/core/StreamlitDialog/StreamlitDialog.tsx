@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,16 +15,16 @@
  * limitations under the License.
  */
 
-import CopyToClipboard from "react-copy-to-clipboard"
+import copy from "copy-to-clipboard"
 import React, { ReactElement, ReactNode } from "react"
-import {
-  Button,
-  Modal,
+import ProgressBar from "components/shared/ProgressBar"
+import { Kind } from "components/shared/Button"
+import Modal, {
+  ModalHeader,
   ModalBody,
   ModalFooter,
-  ModalHeader,
-  Progress,
-} from "reactstrap"
+  ModalButton,
+} from "components/shared/Modal"
 import { HotKeys } from "react-hotkeys"
 
 import {
@@ -33,9 +33,15 @@ import {
 } from "components/core/StreamlitDialog/ScriptChangedDialog"
 import { IException } from "autogen/proto"
 import { SessionInfo } from "lib/SessionInfo"
+import { STREAMLIT_HOME_URL } from "urls"
 import { Props as SettingsDialogProps, SettingsDialog } from "./SettingsDialog"
 
-import "./StreamlitDialog.scss"
+import {
+  StyledUploadFirstLine,
+  StyledRerunHeader,
+  StyledCommandLine,
+  StyledUploadUrl,
+} from "./styled-components"
 
 type PlainEventHandler = () => void
 
@@ -107,23 +113,23 @@ interface AboutProps {
 /** About Dialog */
 function aboutDialog(props: AboutProps): ReactElement {
   return (
-    <BasicDialog onClose={props.onClose}>
-      <ModalHeader toggle={props.onClose}>About</ModalHeader>
+    <Modal isOpen onClose={props.onClose}>
+      <ModalHeader>About</ModalHeader>
       <ModalBody>
         <div>
           Streamlit v{SessionInfo.current.streamlitVersion}
           <br />
-          <a href="https://streamlit.io">https://streamlit.io</a>
+          <a href={STREAMLIT_HOME_URL}>{STREAMLIT_HOME_URL}</a>
           <br />
           Copyright 2020 Streamlit Inc. All rights reserved.
         </div>
       </ModalBody>
       <ModalFooter>
-        <Button outline color="primary" onClick={props.onClose}>
+        <ModalButton kind={Kind.PRIMARY} onClick={props.onClose}>
           Close
-        </Button>
+        </ModalButton>
       </ModalFooter>
-    </BasicDialog>
+    </Modal>
   )
 }
 
@@ -154,22 +160,29 @@ function clearCacheDialog(props: ClearCacheProps): ReactElement {
   // component here but it's not working without it
   return (
     <HotKeys handlers={keyHandlers} attach={window}>
-      <BasicDialog onClose={props.onClose}>
-        <ModalBody>
-          <div>
-            Are you sure you want to clear the <code>@st.cache</code> function
-            cache?
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button outline color="secondary" onClick={props.onClose}>
-            Cancel
-          </Button>{" "}
-          <Button outline color="primary" onClick={props.confirmCallback}>
-            Clear cache
-          </Button>
-        </ModalFooter>
-      </BasicDialog>
+      <div data-testid="stClearCacheDialog">
+        <Modal isOpen onClose={props.onClose}>
+          <ModalHeader>Clear Cache</ModalHeader>
+          <ModalBody>
+            <div>
+              Are you sure you want to clear the <code>@st.cache</code>{" "}
+              function cache?
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <ModalButton kind={Kind.SECONDARY} onClick={props.onClose}>
+              Cancel
+            </ModalButton>
+            <ModalButton
+              autoFocus
+              kind={Kind.PRIMARY}
+              onClick={props.confirmCallback}
+            >
+              Clear cache
+            </ModalButton>
+          </ModalFooter>
+        </Modal>
+      </div>
     </HotKeys>
   )
 }
@@ -205,11 +218,11 @@ function rerunScriptDialog(props: RerunScriptProps): ReactElement {
   // component here but it's not working without it
   return (
     <HotKeys handlers={keyHandlers} attach={window}>
-      <BasicDialog onClose={props.onClose}>
+      <Modal isOpen onClose={props.onClose}>
         <ModalBody>
-          <div className="rerun-header">Command line:</div>
+          <StyledRerunHeader>Command line:</StyledRerunHeader>
           <div>
-            <textarea
+            <StyledCommandLine
               autoFocus
               className="command-line"
               value={props.getCommandLine()}
@@ -218,18 +231,17 @@ function rerunScriptDialog(props: RerunScriptProps): ReactElement {
           </div>
         </ModalBody>
         <ModalFooter>
-          <Button outline color="secondary" onClick={props.onClose}>
+          <ModalButton kind={Kind.SECONDARY} onClick={props.onClose}>
             Cancel
-          </Button>{" "}
-          <Button
-            outline
-            color="primary"
+          </ModalButton>
+          <ModalButton
+            kind={Kind.PRIMARY}
             onClick={() => props.rerunCallback()}
           >
             Rerun
-          </Button>
+          </ModalButton>
         </ModalFooter>
-      </BasicDialog>
+      </Modal>
     </HotKeys>
   )
 }
@@ -244,8 +256,8 @@ function scriptCompileErrorDialog(
   props: ScriptCompileErrorProps
 ): ReactElement {
   return (
-    <BasicDialog onClose={props.onClose}>
-      <ModalHeader toggle={props.onClose}>Script execution error</ModalHeader>
+    <Modal isOpen onClose={props.onClose}>
+      <ModalHeader>Script execution error</ModalHeader>
       <ModalBody>
         <div>
           <pre>
@@ -256,11 +268,11 @@ function scriptCompileErrorDialog(
         </div>
       </ModalBody>
       <ModalFooter>
-        <Button outline color="primary" onClick={props.onClose}>
+        <ModalButton kind={Kind.PRIMARY} onClick={props.onClose}>
           Close
-        </Button>
+        </ModalButton>
       </ModalFooter>
-    </BasicDialog>
+    </Modal>
   )
 }
 
@@ -273,7 +285,7 @@ function settingsDialog(props: SettingsProps): ReactElement {
 
 interface UploadProgressProps {
   type: DialogType.UPLOAD_PROGRESS
-  progress?: string | number
+  progress?: number
   onClose: PlainEventHandler
 }
 
@@ -282,16 +294,14 @@ interface UploadProgressProps {
  */
 function uploadProgressDialog(props: UploadProgressProps): ReactElement {
   return (
-    <BasicDialog onClose={props.onClose}>
+    <Modal isOpen onClose={props.onClose}>
       <ModalBody>
-        <div className="streamlit-upload-first-line">
-          Saving app snapshot...
-        </div>
+        <StyledUploadFirstLine>Saving app snapshot...</StyledUploadFirstLine>
         <div>
-          <Progress animated value={props.progress} />
+          <ProgressBar value={props.progress || 0} />
         </div>
       </ModalBody>
-    </BasicDialog>
+    </Modal>
   )
 }
 
@@ -305,38 +315,42 @@ interface UploadedProps {
  * Shows the URL after something has been uploaded.
  */
 function uploadedDialog(props: UploadedProps): ReactElement {
+  const handleClick: () => void = () => {
+    copy(props.url)
+    props.onClose()
+  }
+
   return (
-    <BasicDialog onClose={props.onClose}>
+    <Modal isOpen onClose={props.onClose}>
       <ModalBody>
         <div className="streamlit-upload-first-line">
           App snapshot saved to:
         </div>
-        <pre id="streamlit-upload-url">
+        {/* We make this an id instead of a class to enable clipboard copy */}
+        <StyledUploadUrl id="streamlit-upload-url">
           <a href={props.url} target="_blank" rel="noopener noreferrer">
             {props.url}
           </a>
-        </pre>
+        </StyledUploadUrl>
       </ModalBody>
       <ModalFooter>
-        <CopyToClipboard text={props.url} onCopy={props.onClose}>
-          <Button outline className="mr-auto">
-            Copy to clipboard
-          </Button>
-        </CopyToClipboard>{" "}
-        <Button
-          outline
+        <ModalButton kind={Kind.SECONDARY} onClick={handleClick}>
+          Copy to clipboard
+        </ModalButton>
+        <ModalButton
+          kind={Kind.SECONDARY}
           onClick={() => {
             window.open(props.url, "_blank")
             props.onClose()
           }}
         >
           Open
-        </Button>
-        <Button outline onClick={props.onClose}>
+        </ModalButton>
+        <ModalButton kind={Kind.PRIMARY} onClick={props.onClose}>
           Done
-        </Button>
+        </ModalButton>
       </ModalFooter>
-    </BasicDialog>
+    </Modal>
   )
 }
 
@@ -352,29 +366,14 @@ interface WarningProps {
  */
 function warningDialog(props: WarningProps): ReactElement {
   return (
-    <BasicDialog onClose={props.onClose}>
+    <Modal isOpen onClose={props.onClose}>
       <ModalHeader>{props.title}</ModalHeader>
       <ModalBody>{props.msg}</ModalBody>
       <ModalFooter>
-        <Button outline onClick={props.onClose}>
+        <ModalButton kind={Kind.PRIMARY} onClick={props.onClose}>
           Done
-        </Button>
+        </ModalButton>
       </ModalFooter>
-    </BasicDialog>
-  )
-}
-
-export function BasicDialog({
-  children,
-  onClose,
-}: {
-  children?: ReactNode
-  onClose?: PlainEventHandler
-}): ReactElement {
-  const isOpen = children !== undefined
-  return (
-    <Modal isOpen={isOpen} toggle={onClose} className="streamlit-dialog">
-      {children}
     </Modal>
   )
 }
@@ -383,7 +382,7 @@ export function BasicDialog({
  * Returns an empty dictionary, indicating that no object is to be displayed.
  */
 function noDialog({ onClose }: { onClose: PlainEventHandler }): ReactElement {
-  return <BasicDialog onClose={onClose} />
+  return <Modal isOpen={false} onClose={onClose} />
 }
 
 interface NotRecognizedProps {
@@ -396,8 +395,8 @@ interface NotRecognizedProps {
  */
 function typeNotRecognizedDialog(props: NotRecognizedProps): ReactElement {
   return (
-    <BasicDialog onClose={props.onClose}>
+    <Modal isOpen onClose={props.onClose}>
       <ModalBody>{`Dialog type "${props.type}" not recognized.`}</ModalBody>
-    </BasicDialog>
+    </Modal>
   )
 }

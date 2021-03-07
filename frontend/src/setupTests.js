@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,6 @@
 // This file is only used in tests, so these imports can be in devDependencies
 /* eslint-disable import/no-extraneous-dependencies */
 import { configure } from "enzyme"
-import Adapter from "enzyme-adapter-react-16"
+import Adapter from "@wojtekmaj/enzyme-adapter-react-17"
 
 configure({ adapter: new Adapter() })

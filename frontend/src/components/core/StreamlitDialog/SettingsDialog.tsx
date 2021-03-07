@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,13 @@
  */
 
 import React, { ChangeEvent, PureComponent, ReactNode } from "react"
-import { Button, Modal, ModalBody, ModalFooter, ModalHeader } from "reactstrap"
+import { Kind } from "components/shared/Button"
+import Modal, {
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  ModalButton,
+} from "components/shared/Modal"
 import { UserSettings } from "./UserSettings"
 
 export interface Props {
@@ -24,6 +30,7 @@ export interface Props {
   onClose: () => void
   onSave: (settings: UserSettings) => void
   settings: UserSettings
+  allowRunOnSave: boolean
 }
 
 /**
@@ -44,27 +51,26 @@ export class SettingsDialog extends PureComponent<Props, UserSettings> {
 
   public render = (): ReactNode => {
     return (
-      <Modal
-        isOpen={true}
-        toggle={this.handleCancelButtonClick}
-        onOpened={this.handleDialogOpen}
-      >
-        <ModalHeader toggle={this.handleCancelButtonClick}>
-          Settings
-        </ModalHeader>
-
+      <Modal isOpen onClose={this.handleCancelButtonClick}>
+        <ModalHeader>Settings</ModalHeader>
         <ModalBody>
-          <label>
-            <input
-              disabled={!this.props.isServerConnected}
-              type="checkbox"
-              name="runOnSave"
-              checked={this.state.runOnSave && this.props.isServerConnected}
-              onChange={this.handleCheckboxChange}
-            />{" "}
-            Run on save
-          </label>
-          <br />
+          {this.props.allowRunOnSave ? (
+            <>
+              <label>
+                <input
+                  disabled={!this.props.isServerConnected}
+                  type="checkbox"
+                  name="runOnSave"
+                  checked={
+                    this.state.runOnSave && this.props.isServerConnected
+                  }
+                  onChange={this.handleCheckboxChange}
+                />{" "}
+                Run on save
+              </label>
+              <br />
+            </>
+          ) : null}
           <label>
             <input
               type="checkbox"
@@ -75,24 +81,25 @@ export class SettingsDialog extends PureComponent<Props, UserSettings> {
             Show app in wide mode
           </label>
         </ModalBody>
-
         <ModalFooter>
-          <Button
-            outline
-            color="secondary"
+          <ModalButton
+            kind={Kind.SECONDARY}
             onClick={this.handleCancelButtonClick}
           >
             Cancel
-          </Button>
-          <Button outline color="primary" onClick={this.handleSaveButtonClick}>
+          </ModalButton>
+          <ModalButton
+            kind={Kind.PRIMARY}
+            onClick={this.handleSaveButtonClick}
+          >
             Save
-          </Button>
+          </ModalButton>
         </ModalFooter>
       </Modal>
     )
   }
 
-  private handleDialogOpen = (): void => {
+  public componentDidMount(): void {
     this.setState({ ...this.activeSettings })
   }
 

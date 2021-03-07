@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,17 +22,20 @@ import io
 import re
 import textwrap
 import unittest
+import logging
 
 from google.protobuf import json_format
 import PIL.Image as Image
 import numpy as np
 import pandas as pd
+from parameterized import parameterized
 from scipy.io import wavfile
 
+import streamlit as st
 from streamlit import __version__
 from streamlit.errors import StreamlitAPIException
-from streamlit.proto.Balloons_pb2 import Balloons
-
+from streamlit.logger import get_logger
+from streamlit.proto.Empty_pb2 import Empty as EmptyProto
 from streamlit.proto.Alert_pb2 import Alert
 
 from streamlit.media_file_manager import media_file_manager
@@ -40,7 +43,6 @@ from streamlit.media_file_manager import _calculate_file_id
 from streamlit.media_file_manager import STATIC_MEDIA_ENDPOINT
 
 from tests import testutil
-import streamlit as st
 
 
 def get_version():
@@ -82,6 +84,26 @@ class StreamlitTest(unittest.TestCase):
 
         with self.assertRaises(StreamlitAPIException):
             st.set_option("server.enableCORS", False)
+
+    def test_run_warning_presence(self):
+        """Using Streamlit without `streamlit run` produces a warning."""
+        with self.assertLogs(level=logging.WARNING) as logs:
+            st._is_running_with_streamlit = False
+            st._use_warning_has_been_displayed = False
+            st.write("Using delta generator")
+            output = "".join(logs.output)
+            # Warning produced exactly once
+            self.assertEqual(len(re.findall(r"streamlit run", output)), 1)
+
+    def test_run_warning_absence(self):
+        """Using Streamlit through the CLI produces no usage warning."""
+        with self.assertLogs(level=logging.WARNING) as logs:
+            st._is_running_with_streamlit = True
+            st._use_warning_has_been_displayed = False
+            st.write("Using delta generator")
+            # assertLogs is being used as a context manager, but it also checks that some log output was captured, so we have to let it capture something
+            get_logger("root").warning("irrelevant warning so assertLogs passes")
+            self.assertNotRegex("".join(logs.output), r"streamlit run")
 
 
 class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
@@ -205,13 +227,9 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
 
     def test_st_balloons(self):
         """Test st.balloons."""
-        with patch("random.randrange") as p:
-            p.return_value = 0xDEADBEEF
-            st.balloons()
-
+        st.balloons()
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.balloons.type, Balloons.DEFAULT)
-        self.assertEqual(el.balloons.execution_id, 0xDEADBEEF)
+        self.assertEqual(el.balloons.show, True)
 
     def test_st_bar_chart(self):
         """Test st.bar_chart."""
@@ -265,7 +283,7 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         st.empty()
 
         el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.empty.unused, True)
+        self.assertEqual(el.empty, EmptyProto())
 
     def test_st_error(self):
         """Test st.error."""
@@ -275,17 +293,24 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         self.assertEqual(el.alert.body, "some error")
         self.assertEqual(el.alert.format, Alert.ERROR)
 
-    def test_st_exception(self):
+    @parameterized.expand([(True,), (False,)])
+    def test_st_exception(self, show_error_details: bool):
         """Test st.exception."""
-        e = RuntimeError("Test Exception")
-        st.exception(e)
+        # client.showErrorDetails has no effect on code that calls
+        # st.exception directly. This test should have the same result
+        # regardless fo the config option.
+        with testutil.patch_config_options(
+            {"client.showErrorDetails": show_error_details}
+        ):
+            e = RuntimeError("Test Exception")
+            st.exception(e)
 
-        el = self.get_delta_from_queue().new_element
-        self.assertEqual(el.exception.type, "RuntimeError")
-        self.assertEqual(el.exception.message, "Test Exception")
-        # We will test stack_trace when testing
-        # streamlit.elements.exception_element
-        self.assertEqual(el.exception.stack_trace, [])
+            el = self.get_delta_from_queue().new_element
+            self.assertEqual(el.exception.type, "RuntimeError")
+            self.assertEqual(el.exception.message, "Test Exception")
+            # We will test stack_trace when testing
+            # streamlit.elements.exception_element
+            self.assertEqual(el.exception.stack_trace, [])
 
     def test_st_header(self):
         """Test st.header."""
@@ -311,14 +336,14 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         """Test st.image with PIL image."""
         img = Image.new("RGB", (64, 64), color="red")
 
-        st.image(img, caption="some caption", width=100, format="PNG")
+        st.image(img, caption="some caption", width=100, output_format="PNG")
 
         el = self.get_delta_from_queue().new_element
         self.assertEqual(el.imgs.width, 100)
         self.assertEqual(el.imgs.imgs[0].caption, "some caption")
 
         # locate resultant file in the file manager and check its metadata.
-        from streamlit.elements.image_proto import _PIL_to_bytes
+        from streamlit.elements.image import _PIL_to_bytes
 
         file_id = _calculate_file_id(_PIL_to_bytes(img, format="PNG"), "image/png")
         self.assertTrue(file_id in media_file_manager)
@@ -341,14 +366,14 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
             width=200,
             use_column_width=True,
             clamp=True,
-            format="PNG",
+            output_format="PNG",
         )
 
         el = self.get_delta_from_queue().new_element
         self.assertEqual(el.imgs.width, -2)
 
         # locate resultant file in the file manager and check its metadata.
-        from streamlit.elements.image_proto import _PIL_to_bytes
+        from streamlit.elements.image import _PIL_to_bytes
 
         for idx in range(len(imgs)):
             file_id = _calculate_file_id(
@@ -478,11 +503,11 @@ class StreamlitAPITest(testutil.DeltaGeneratorTestCase):
         data = np.random.randn(2, 20)
 
         # Generate a 2 inch x 2 inch figure
-        plt.figure(figsize=(2, 2))
+        fig, ax = plt.subplots(figsize=(2, 2))
         # Add 20 random points to scatter plot.
-        plt.scatter(data[0], data[1])
+        ax.scatter(data[0], data[1])
 
-        st.pyplot()
+        st.pyplot(fig)
 
         el = self.get_delta_from_queue().new_element
         self.assertEqual(el.imgs.width, -2)

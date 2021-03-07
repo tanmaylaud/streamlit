@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,23 +16,12 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
-import { fromJS } from "immutable"
-import { Balloons as BalloonsProto } from "autogen/proto"
+import { mount } from "lib/test_util"
 
-import Balloons, {
-  Props,
-  MAX_ANIMATION_DURATION_MS,
-  DELAY_MAX_MS,
-  NUM_BALLOONS,
-} from "./Balloons"
+import Balloons, { Props, NUM_BALLOONS } from "./Balloons"
 
 const getProps = (): Props => ({
-  element: fromJS({
-    type: BalloonsProto.Type.DEFAULT,
-    executionId: 51522269,
-  }),
-  width: 0,
+  reportId: "51522269",
 })
 
 describe("Balloons element", () => {
@@ -45,31 +34,20 @@ describe("Balloons element", () => {
 
   it("renders without crashing", () => {
     const props = getProps()
-    const wrapper = shallow(<Balloons {...props} />)
+    const wrapper = mount(<Balloons {...props} />)
 
     expect(wrapper).toBeDefined()
-    expect(wrapper.find(".balloons img").length).toBe(NUM_BALLOONS)
+    expect(wrapper.find("StyledBalloon").length).toBe(NUM_BALLOONS)
 
-    wrapper.find(".balloons img").forEach(node => {
+    wrapper.find("StyledBalloon").forEach(node => {
       expect(node.prop("src")).toBeTruthy()
-      expect(node.prop("style")).toHaveProperty("left")
-      expect(node.prop("style")).toHaveProperty("animationDelay")
     })
   })
 
-  it("should render one time per session", async () => {
+  it("renders as hidden element", () => {
     const props = getProps()
-    const wrapper = shallow(<Balloons {...props} />)
+    const wrapper = mount(<Balloons {...props} />)
 
-    expect(wrapper.html()).not.toBeNull()
-    expect(setTimeout).toHaveBeenCalledWith(
-      expect.any(Function),
-      MAX_ANIMATION_DURATION_MS + DELAY_MAX_MS + 100
-    )
-    expect(setTimeout).toBeCalledTimes(1)
-
-    jest.runAllTimers()
-
-    expect(wrapper.state("drawnId")).toBe(props.element.get("executionId"))
+    expect(wrapper.find("div").prop("className")).toContain("stHidden")
   })
 })

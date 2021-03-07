@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ const MOCK_SERVER_URI = {
   basePath: "",
 }
 
-describe("FileUploadClient", () => {
+describe("FileUploadClient Upload", () => {
   let axiosMock: MockAdapter
 
   beforeEach(() => {
@@ -38,6 +38,8 @@ describe("FileUploadClient", () => {
       streamlitVersion: "sv",
       pythonVersion: "pv",
       installationId: "iid",
+      installationIdV1: "iid1",
+      installationIdV2: "iid2",
       authorEmail: "ae",
       maxCachedMessageAge: 2,
       commandLine: "command line",
@@ -47,6 +49,7 @@ describe("FileUploadClient", () => {
 
   afterEach(() => {
     axiosMock.restore()
+    // @ts-ignore
     SessionInfo.singleton = undefined
   })
 
@@ -79,14 +82,14 @@ describe("FileUploadClient", () => {
       })
   }
 
-  test("uploads files correctly", async () => {
-    const uploader = new FileUploadClient(() => MOCK_SERVER_URI)
+  test("it uploads files correctly", async () => {
+    const uploader = new FileUploadClient(() => MOCK_SERVER_URI, true)
 
     mockUploadResponseStatus(200)
 
     const files = [
-      new File(["file1"], "file1.txt"),
-      new File(["file2"], "file2.txt"),
+      { file: new File(["file1"], "file1.txt"), id: "id1" },
+      { file: new File(["file2"], "file2.txt"), id: "id2" },
     ]
 
     await expect(
@@ -94,18 +97,57 @@ describe("FileUploadClient", () => {
     ).resolves.toBeUndefined()
   })
 
-  test("handles errors", async () => {
-    const uploader = new FileUploadClient(() => MOCK_SERVER_URI)
+  test("it handles errors", async () => {
+    const uploader = new FileUploadClient(() => MOCK_SERVER_URI, true)
 
     mockUploadResponseStatus(400)
 
     const files = [
-      new File(["file1"], "file1.txt"),
-      new File(["file2"], "file2.txt"),
+      { file: new File(["file1"], "file1.txt"), id: "id1" },
+      { file: new File(["file2"], "file2.txt"), id: "id2" },
     ]
 
     await expect(uploader.uploadFiles("widgetId", files)).rejects.toEqual(
       new Error("Request failed with status code 400")
     )
+  })
+})
+
+describe("FileUploadClient delete", () => {
+  beforeEach(() => {
+    axios.request = jest.fn()
+    SessionInfo.current = new SessionInfo({
+      sessionId: "sessionId",
+      streamlitVersion: "sv",
+      pythonVersion: "pv",
+      installationId: "iid",
+      installationIdV1: "iid1",
+      installationIdV2: "iid2",
+      authorEmail: "ae",
+      maxCachedMessageAge: 2,
+      commandLine: "command line",
+      userMapboxToken: "mockUserMapboxToken",
+    })
+  })
+
+  afterEach(() => {
+    // @ts-ignore
+    SessionInfo.singleton = undefined
+  })
+
+  test("it deletes file", async () => {
+    const uploader = new FileUploadClient(() => MOCK_SERVER_URI, true)
+
+    await expect(uploader.delete("widgetId", "123")).resolves.toEqual(
+      undefined
+    )
+
+    expect(axios.request).toHaveBeenCalledWith({
+      method: "DELETE",
+      url: buildHttpUri(
+        MOCK_SERVER_URI,
+        `upload_file/${SessionInfo.current.sessionId}/widgetId/123`
+      ),
+    })
   })
 })

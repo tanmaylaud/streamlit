@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,13 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
-import { fromJS } from "immutable"
+import { mount, shallow } from "lib/test_util"
 
-import Audio, { Props } from "./Audio"
+import { Audio as AudioProto } from "autogen/proto"
+import Audio, { AudioProps } from "./Audio"
 
-const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
-  element: fromJS({
+const getProps = (elementProps: Partial<AudioProto> = {}): AudioProps => ({
+  element: AudioProto.create({
     startTime: 0,
     url: "/media/08a569df5f3bd617f11b7d137861a3bef91379309ce95bdb9ff04a38.wav",
     ...elementProps,
@@ -57,7 +57,7 @@ describe("Audio Element", () => {
       const wrapper = shallow(<Audio {...props} />)
       const audioElement = wrapper.find("audio")
 
-      expect(audioElement.prop("src")).toBe(props.element.get("url"))
+      expect(audioElement.prop("src")).toBe(props.element.url)
     })
   })
 
@@ -65,24 +65,13 @@ describe("Audio Element", () => {
     const props = getProps({
       url: "http://localhost:80/media/sound.wav",
     })
+    const wrapper = mount(<Audio {...props} />)
 
-    const wrapper = shallow(<Audio {...props} />)
-    const instance = wrapper.instance()
+    const audioElement: HTMLAudioElement = wrapper.find("audio").getDOMNode()
+    expect(audioElement.currentTime).toBe(0)
 
-    // @ts-ignore
-    instance.audioRef = {
-      current: {
-        currentTime: 0,
-      },
-    }
+    wrapper.setProps(getProps({ startTime: 10 }))
 
-    wrapper.setProps(
-      getProps({
-        startTime: 10,
-      })
-    )
-
-    // @ts-ignore
-    expect(instance.audioRef.current.currentTime).toBe(10)
+    expect(audioElement.currentTime).toBe(10)
   })
 })

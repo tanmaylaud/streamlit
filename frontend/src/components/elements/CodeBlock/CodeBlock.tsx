@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
  * limitations under the License.
  */
 
-import Prism from "prismjs"
-import React, { PureComponent, ReactNode } from "react"
+import Prism, { Grammar } from "prismjs"
+import React, { ReactElement } from "react"
 import { logWarning } from "lib/log"
 
 // Prism language definition files.
@@ -31,58 +31,70 @@ import "prismjs/components/prism-yaml"
 import "prismjs/components/prism-css"
 import "prismjs/components/prism-c"
 import CopyButton from "./CopyButton"
-import "./CodeBlock.scss"
+import {
+  StyledPre,
+  StyledCodeBlock,
+  StyledCopyButtonContainer,
+} from "./styled-components"
 
-export interface Props {
-  width: number
-  language?: string
+interface CodeTagProps {
+  language?: string | null
   value: string
+}
+
+export interface CodeBlockProps extends CodeTagProps {}
+
+/**
+ * Renders code tag with highlighting based on requested language.
+ */
+function CodeTag({ language, value }: CodeTagProps): ReactElement {
+  // language is explicitly null; don't highlight
+  if (language === null) {
+    return <code>{value}</code>
+  }
+
+  // no language provided; we'll default to python
+  if (language === undefined) {
+    logWarning(`No language provided, defaulting to Python`)
+  }
+
+  const languageKey = (language || "python").toLowerCase()
+
+  // language provided, but not supported; don't highlight
+  const lang: Grammar = Prism.languages[languageKey]
+  if (!lang) {
+    logWarning(`No syntax highlighting for ${language}.`)
+    return <code>{value}</code>
+  }
+
+  // language provided & supported; return highlighted code
+  return (
+    <code
+      className={`language-${languageKey}`}
+      dangerouslySetInnerHTML={{
+        __html: value && Prism.highlight(value, lang, ""),
+      }}
+    />
+  )
 }
 
 /**
  * Renders a code block with syntax highlighting, via Prismjs
  */
-class CodeBlock extends PureComponent<Props> {
-  public render(): ReactNode {
-    if (this.props.language == null) {
-      return (
-        <div className="stCodeBlock">
-          <CopyButton text={this.props.value} />
-          <pre>
-            <code>{this.props.value}</code>
-          </pre>
-        </div>
-      )
-    }
-
-    // Language definition keys are lowercase
-    let lang = Prism.languages[this.props.language.toLowerCase()]
-    let languageClassName = `language-${this.props.language}`
-
-    if (lang === undefined) {
-      logWarning(
-        `No syntax highlighting for ${this.props.language}; defaulting to Python`
-      )
-      lang = Prism.languages.python
-      languageClassName = "language-python"
-    }
-
-    const safeHtml = this.props.value
-      ? Prism.highlight(this.props.value, lang, "")
-      : ""
-
-    return (
-      <div className="stCodeBlock">
-        <CopyButton text={this.props.value} />
-        <pre>
-          <code
-            className={languageClassName}
-            dangerouslySetInnerHTML={{ __html: safeHtml }}
-          />
-        </pre>
-      </div>
-    )
-  }
+export default function CodeBlock({
+  language,
+  value,
+}: CodeBlockProps): ReactElement {
+  return (
+    <StyledCodeBlock className="stCodeBlock">
+      {value && (
+        <StyledCopyButtonContainer>
+          <CopyButton text={value} />
+        </StyledCopyButtonContainer>
+      )}
+      <StyledPre>
+        <CodeTag language={language} value={value} />
+      </StyledPre>
+    </StyledCodeBlock>
+  )
 }
-
-export default CodeBlock

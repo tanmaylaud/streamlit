@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from blinker import Signal
 from streamlit import config
 from streamlit import magic
 from streamlit import source_util
+from streamlit.error_util import handle_uncaught_app_exception
 from streamlit.media_file_manager import media_file_manager
 from streamlit.report_thread import ReportThread
 from streamlit.report_thread import get_report_ctx
@@ -248,7 +249,15 @@ class ScriptRunner(object):
 
         # Reset DeltaGenerators, widgets, media files.
         media_file_manager.clear_session_files()
-        get_report_ctx().reset(query_string=rerun_data.query_string)
+
+        ctx = get_report_ctx()
+        if ctx is None:
+            # This should never be possible on the script_runner thread.
+            raise RuntimeError(
+                "ScriptRunner thread has a null ReportContext. Something has gone very wrong!"
+            )
+
+        ctx.reset(query_string=rerun_data.query_string)
 
         self.on_event.send(ScriptRunnerEvent.SCRIPT_STARTED)
 
@@ -330,17 +339,15 @@ class ScriptRunner(object):
             pass
 
         except BaseException as e:
-            # Show exceptions in the Streamlit report.
-            LOGGER.debug(e)
-            import streamlit as st
-
-            st.exception(e)  # This is OK because we're in the script thread.
-            # TODO: Clean up the stack trace, so it doesn't include
-            # ScriptRunner.
+            handle_uncaught_app_exception(e)
 
         finally:
             self._widgets.reset_triggers()
+            self._widgets.cull_nonexistent(ctx.widget_ids_this_run.items())
             self.on_event.send(ScriptRunnerEvent.SCRIPT_STOPPED_WITH_SUCCESS)
+            # delete expired files now that the script has run and files in use
+            # are marked as active
+            media_file_manager.del_expired_files()
 
         # Use _log_if_error() to make sure we never ever ever stop running the
         # script without meaning to.

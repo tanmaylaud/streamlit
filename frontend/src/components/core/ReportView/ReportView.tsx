@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,30 +15,29 @@
  * limitations under the License.
  */
 
-import React, { PureComponent, ReactNode } from "react"
-import classNames from "classnames"
-
-import Block from "components/core/Block/"
+import React, { ReactElement } from "react"
+import Block from "components/core/Block"
 import Sidebar from "components/core/Sidebar"
 import { ReportRunState } from "lib/ReportRunState"
 import { WidgetStateManager } from "lib/WidgetStateManager"
 import { FileUploadClient } from "lib/FileUploadClient"
 import { ComponentRegistry } from "components/widgets/CustomComponent"
 
-import { ThemeProvider } from "baseui"
-import { BlockElement } from "lib/DeltaParser"
-import { mainWidgetTheme, sidebarWidgetTheme } from "lib/widgetTheme"
+import ThemeProvider from "components/core/ThemeProvider"
+import PageLayoutContext from "components/core/PageLayoutContext"
+import { sidebarTheme, sidebarBaseUITheme } from "theme"
+import { BlockNode, ReportRoot } from "lib/ReportNode"
 
-import "./ReportView.scss"
-import "./Widget.scss"
+import {
+  StyledReportViewBlockContainer,
+  StyledReportViewContainer,
+  StyledReportViewFooter,
+  StyledReportViewFooterLink,
+  StyledReportViewMain,
+} from "./styled-components"
 
-interface Elements {
-  main: BlockElement
-  sidebar: BlockElement
-}
-
-interface Props {
-  elements: Elements
+export interface ReportViewProps {
+  elements: ReportRoot
 
   // The unique ID for the most recent run of the report.
   reportId: string
@@ -60,73 +59,75 @@ interface Props {
   // Disable the widgets when not connected to the server.
   widgetsDisabled: boolean
 
-  // Wide mode
-  wide: boolean
-
   componentRegistry: ComponentRegistry
 }
 
 /**
  * Renders a Streamlit report. Reports consist of 0 or more elements.
  */
-class ReportView extends PureComponent<Props> {
-  private hasSidebar = (): boolean => !this.props.elements.sidebar.isEmpty()
+function ReportView(props: ReportViewProps): ReactElement {
+  const {
+    elements,
+    reportId,
+    reportRunState,
+    showStaleElementIndicator,
+    widgetMgr,
+    widgetsDisabled,
+    uploadClient,
+    componentRegistry,
+  } = props
 
-  public render = (): ReactNode => {
-    const { wide } = this.props
+  const { wideMode, initialSidebarState, embedded } = React.useContext(
+    PageLayoutContext
+  )
+  const renderBlock = (node: BlockNode): ReactElement => (
+    <StyledReportViewBlockContainer
+      className="block-container"
+      isWideMode={wideMode}
+    >
+      <Block
+        node={node}
+        reportId={reportId}
+        reportRunState={reportRunState}
+        showStaleElementIndicator={showStaleElementIndicator}
+        widgetMgr={widgetMgr}
+        widgetsDisabled={widgetsDisabled}
+        uploadClient={uploadClient}
+        componentRegistry={componentRegistry}
+      />
+    </StyledReportViewBlockContainer>
+  )
 
-    const reportViewClassName = classNames("reportview-container", {
-      "--wide": wide,
-    })
-
-    // The tabindex is required to support scrolling by arrow keys.
-    return (
-      <div className={reportViewClassName}>
-        {this.hasSidebar() && (
-          <Sidebar>
-            <div className="block-container">
-              <ThemeProvider theme={sidebarWidgetTheme}>
-                <Block
-                  elements={this.props.elements.sidebar}
-                  reportId={this.props.reportId}
-                  reportRunState={this.props.reportRunState}
-                  showStaleElementIndicator={
-                    this.props.showStaleElementIndicator
-                  }
-                  widgetMgr={this.props.widgetMgr}
-                  widgetsDisabled={this.props.widgetsDisabled}
-                  uploadClient={this.props.uploadClient}
-                  componentRegistry={this.props.componentRegistry}
-                />
-              </ThemeProvider>
-            </div>
-          </Sidebar>
-        )}
-        <section className="main" tabIndex={0}>
-          <div className="block-container">
-            <ThemeProvider theme={mainWidgetTheme}>
-              <Block
-                elements={this.props.elements.main}
-                reportId={this.props.reportId}
-                reportRunState={this.props.reportRunState}
-                showStaleElementIndicator={
-                  this.props.showStaleElementIndicator
-                }
-                widgetMgr={this.props.widgetMgr}
-                widgetsDisabled={this.props.widgetsDisabled}
-                uploadClient={this.props.uploadClient}
-                componentRegistry={this.props.componentRegistry}
-              />
-            </ThemeProvider>
-          </div>
-
-          <footer>
-            Made with <a href="//streamlit.io">Streamlit</a>
-          </footer>
-        </section>
-      </div>
-    )
-  }
+  const layout = wideMode ? "wide" : "narrow"
+  // The tabindex is required to support scrolling by arrow keys.
+  return (
+    <StyledReportViewContainer
+      className="reportview-container"
+      data-testid="stReportViewContainer"
+      data-layout={layout}
+    >
+      {!elements.sidebar.isEmpty && (
+        <Sidebar initialSidebarState={initialSidebarState}>
+          <ThemeProvider theme={sidebarTheme} baseuiTheme={sidebarBaseUITheme}>
+            {renderBlock(elements.sidebar)}
+          </ThemeProvider>
+        </Sidebar>
+      )}
+      <StyledReportViewMain
+        tabIndex={0}
+        isEmbedded={embedded}
+        className="main"
+      >
+        {renderBlock(elements.main)}
+        <StyledReportViewFooter isEmbedded={embedded}>
+          Made with{" "}
+          <StyledReportViewFooterLink href="//streamlit.io">
+            Streamlit
+          </StyledReportViewFooterLink>
+        </StyledReportViewFooter>
+      </StyledReportViewMain>
+    </StyledReportViewContainer>
+  )
 }
 
 export default ReportView

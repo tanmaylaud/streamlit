@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,20 +16,20 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
-import { fromJS } from "immutable"
+import { mount } from "lib/test_util"
 import { WidgetStateManager } from "lib/WidgetStateManager"
 
 import { Checkbox as UICheckbox } from "baseui/checkbox"
+import { Checkbox as CheckboxProto } from "autogen/proto"
 import Checkbox, { Props } from "./Checkbox"
 
 jest.mock("lib/WidgetStateManager")
 
 const sendBackMsg = jest.fn()
 
-const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
-  element: fromJS({
-    id: 1,
+const getProps = (elementProps: Partial<CheckboxProto> = {}): Props => ({
+  element: CheckboxProto.create({
+    id: "1",
     label: "Label",
     default: false,
     ...elementProps,
@@ -41,7 +41,7 @@ const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
 
 describe("Checkbox widget", () => {
   const props = getProps()
-  const wrapper = shallow(<Checkbox {...props} />)
+  const wrapper = mount(<Checkbox {...props} />)
 
   it("renders without crashing", () => {
     expect(wrapper.find(UICheckbox).length).toBe(1)
@@ -49,8 +49,8 @@ describe("Checkbox widget", () => {
 
   it("should set widget value on did mount", () => {
     expect(props.widgetMgr.setBoolValue).toHaveBeenCalledWith(
-      props.element.get("id"),
-      props.element.get("default"),
+      props.element.id,
+      props.element.default,
       { fromUi: false }
     )
   })
@@ -62,7 +62,6 @@ describe("Checkbox widget", () => {
     // @ts-ignore
     const splittedClassName = className.split(" ")
 
-    expect(splittedClassName).toContain("Widget")
     expect(splittedClassName).toContain("row-widget")
     expect(splittedClassName).toContain("stCheckbox")
 
@@ -71,14 +70,12 @@ describe("Checkbox widget", () => {
   })
 
   it("should render a label", () => {
-    expect(wrapper.find(UICheckbox).prop("children")).toBe(
-      props.element.get("label")
-    )
+    expect(wrapper.find(UICheckbox).prop("children")).toBe(props.element.label)
   })
 
   it("should be unchecked by default", () => {
     expect(wrapper.find(UICheckbox).prop("checked")).toBe(
-      props.element.get("default")
+      props.element.default
     )
   })
 
@@ -93,12 +90,13 @@ describe("Checkbox widget", () => {
         checked: true,
       },
     } as EventTarget)
+    wrapper.update()
 
     expect(props.widgetMgr.setBoolValue).toHaveBeenCalledWith(
-      props.element.get("id"),
+      props.element.id,
       true,
       { fromUi: true }
     )
-    expect(wrapper.state("value")).toBeTruthy()
+    expect(wrapper.find(UICheckbox).prop("checked")).toBeTruthy()
   })
 })

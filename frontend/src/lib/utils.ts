@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,16 +15,10 @@
  * limitations under the License.
  */
 
+import { Alert as AlertProto, Element } from "autogen/proto"
+import _ from "lodash"
 import url from "url"
 import xxhash from "xxhashjs"
-import {
-  fromJS,
-  List,
-  Map as ImmutableMap,
-  Set as ImmutableSet,
-} from "immutable"
-import { Alert as AlertProto } from "autogen/proto"
-import { BlockElement, ReportElement, SimpleElement } from "./DeltaParser"
 
 /**
  * Wraps a function to allow it to be called, at most, once per interval
@@ -57,14 +51,16 @@ export function isEmbeddedInIFrame(): boolean {
 }
 
 /**
- * A helper function to make an ImmutableJS
- * info element from the given text.
+ * Returns true if the frameElement and parent parameters indicate that we're in an
+ * iframe.
  */
-export function makeElementWithInfoText(
-  text: string
-): ImmutableMap<string, any> {
-  return fromJS({
-    type: "alert",
+export function isInChildFrame(): boolean {
+  return window.parent !== window && !!window.frameElement
+}
+
+/** Return an Alert Element protobuf with the given text. */
+export function makeElementWithInfoText(text: string): Element {
+  return new Element({
     alert: {
       body: text,
       format: AlertProto.Format.INFO,
@@ -92,23 +88,18 @@ export function requireNonNull<T>(obj: T | null | undefined): T {
 }
 
 /**
- * Provide an ImmutableSet of SimpleElements by walking a BlockElement to
- * its leaves.
+ * A type predicate that is true if the given value is not undefined.
  */
-export function flattenElements(
-  elements: BlockElement
-): ImmutableSet<SimpleElement> {
-  return elements.reduce(
-    (acc: ImmutableSet<SimpleElement>, reportElement: ReportElement) => {
-      const element = reportElement.get("element")
+export function notUndefined<T>(value: T | undefined): value is T {
+  return value !== undefined
+}
 
-      if (element instanceof List) {
-        return flattenElements(element as BlockElement)
-      }
-      return acc.union(ImmutableSet.of(element as SimpleElement))
-    },
-    ImmutableSet.of<SimpleElement>()
-  )
+/**
+ * A type predicate that is true if the given value is neither undefined
+ * nor null.
+ */
+export function notNull<T>(value: T | null | undefined): value is T {
+  return value != null
 }
 
 /**
@@ -124,6 +115,13 @@ export function timeout(ms: number): Promise<void> {
  */
 export function isFromMac(): boolean {
   return /Mac/i.test(navigator.platform)
+}
+
+/**
+ * Tests if the app is running from a Windows
+ */
+export function isFromWindows(): boolean {
+  return /^Win/i.test(navigator.platform)
 }
 
 /**
@@ -147,4 +145,9 @@ export function setCookie(
     ? `expires=${expirationDate.toUTCString()};`
     : ""
   document.cookie = `${name}=${value};${expirationStr}path=/`
+}
+
+/** Return an Element's widget ID if it's a widget, and undefined otherwise. */
+export function getElementWidgetID(element: Element): string | undefined {
+  return _.get(element as any, [requireNonNull(element.type), "id"])
 }

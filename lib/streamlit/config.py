@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,10 +29,6 @@ from streamlit import env_util
 from streamlit import file_util
 from streamlit import util
 from streamlit.config_option import ConfigOption
-
-from streamlit.logger import get_logger
-
-LOGGER = get_logger(__name__)
 
 # Config System Global State #
 
@@ -161,9 +157,11 @@ def _create_option(
         replaced_by=replaced_by,
         type_=type_,
     )
-    assert option.section in _section_descriptions, (
-        'Section "%s" must be one of %s.'
-        % (option.section, ", ".join(_section_descriptions.keys()))
+    assert (
+        option.section in _section_descriptions
+    ), 'Section "%s" must be one of %s.' % (
+        option.section,
+        ", ".join(_section_descriptions.keys()),
     )
     assert key not in _config_options, 'Cannot define option "%s" twice.' % key
     _config_options[key] = option
@@ -201,6 +199,7 @@ _create_option(
 
 _create_option(
     "global.sharingMode",
+    visibility="hidden",
     description="""
         Configure the ability to share apps to the cloud.
 
@@ -240,16 +239,17 @@ def _global_development_mode():
     )
 
 
-@_create_option("global.logLevel")
-def _global_log_level():
-    """Level of logging: 'error', 'warning', 'info', or 'debug'.
+_create_option(
+    "global.logLevel",
+    description="""Level of logging: 'error', 'warning', 'info', or 'debug'.
 
     Default: 'info'
-    """
-    if get_option("global.developmentMode"):
-        return "debug"
-    else:
-        return "info"
+    """,
+    deprecated=True,
+    deprecation_text="global.logLevel has been replaced with logger.level",
+    expiration_date="2020-11-30",
+    replaced_by="logger.level",
+)
 
 
 @_create_option("global.unitTest", visibility="hidden", type_=bool)
@@ -296,6 +296,43 @@ _create_option(
     type_=int,
 )
 
+
+# Config Section: Logger #
+_create_section("logger", "Settings to customize Streamlit log messages.")
+
+
+@_create_option("logger.level", type_=str)
+def _logger_log_level():
+    """Level of logging: 'error', 'warning', 'info', or 'debug'.
+
+    Default: 'info'
+    """
+
+    if get_option("global.logLevel"):
+        return get_option("global.logLevel")
+    elif get_option("global.developmentMode"):
+        return "debug"
+    else:
+        return "info"
+
+
+@_create_option("logger.messageFormat", type_=str)
+def _logger_message_format():
+    """String format for logging messages. If logger.datetimeFormat is set,
+    logger messages will default to `%(asctime)s.%(msecs)03d %(message)s`. See
+    [Python's documentation](https://docs.python.org/2.6/library/logging.html#formatter-objects)
+    for available attributes.
+
+    Default: None
+    """
+    if get_option("global.developmentMode"):
+        from streamlit.logger import DEFAULT_LOG_MESSAGE
+
+        return DEFAULT_LOG_MESSAGE
+    else:
+        return "%(asctime)s %(message)s"
+
+
 # Config Section: Client #
 
 _create_section("client", "Settings for scripts that use Streamlit.")
@@ -312,6 +349,21 @@ _create_option(
     "client.displayEnabled",
     description="""If false, makes your Streamlit script not draw to a
         Streamlit app.""",
+    default_val=True,
+    type_=bool,
+    scriptable=True,
+)
+
+_create_option(
+    "client.showErrorDetails",
+    description="""
+        Controls whether uncaught app exceptions are displayed in the browser.
+        By default, this is set to True and Streamlit displays app exceptions
+        and associated tracebacks in the browser.
+
+        If set to False, an exception will result in a generic message being
+        shown in the browser, and exceptions and tracebacks will be printed to
+        the console only.""",
     default_val=True,
     type_=bool,
     scriptable=True,
@@ -398,25 +450,27 @@ def _server_cookie_secret():
 
 
 @_create_option("server.headless", type_=bool)
-@util.memoize
 def _server_headless():
     """If false, will attempt to open a browser window on start.
 
     Default: false unless (1) we are on a Linux box where DISPLAY is unset, or
     (2) server.liveSave is set.
     """
-    is_live_save_on = get_option("server.liveSave")
-    is_linux = env_util.IS_LINUX_OR_BSD
-    has_display_env = not os.getenv("DISPLAY")
-    is_running_in_editor_plugin = (
-        os.getenv("IS_RUNNING_IN_STREAMLIT_EDITOR_PLUGIN") is not None
-    )
-    return (
-        is_live_save_on or (is_linux and has_display_env) or is_running_in_editor_plugin
-    )
+    if get_option("server.liveSave"):
+        return True
+
+    if env_util.IS_LINUX_OR_BSD and not os.getenv("DISPLAY"):
+        # We're running in Linux and DISPLAY is unset
+        return True
+
+    if os.getenv("IS_RUNNING_IN_STREAMLIT_EDITOR_PLUGIN") is not None:
+        # We're running within the Streamlit Atom plugin
+        return True
+
+    return False
 
 
-@_create_option("server.liveSave", type_=bool)
+@_create_option("server.liveSave", type_=bool, visibility="hidden")
 def _server_live_save():
     """Immediately share the app in such a way that enables live
     monitoring, and post-run analysis.
@@ -433,6 +487,15 @@ def _server_run_on_save():
     Default: false
     """
     return False
+
+
+@_create_option("server.allowRunOnSave", type_=bool, visibility="hidden")
+def _server_allow_run_on_save():
+    """Allows users to automatically rerun when app is updated.
+
+    Default: true
+    """
+    return True
 
 
 @_create_option("server.address")
@@ -565,7 +628,7 @@ _create_section("mapbox", "Mapbox configuration that is being used by DeckGL.")
 _create_option(
     "mapbox.token",
     description="""Configure Streamlit to use a custom Mapbox
-                token for elements like st.deck_gl_chart and st.map.
+                token for elements like st.pydeck_chart and st.map.
                 To get a token for yourself, create an account at
                 https://mapbox.com. It's free (for moderate usage levels)!""",
     default_val="",
@@ -579,6 +642,26 @@ _create_section("deprecation", "Configuration to show or hide deprecation warnin
 _create_option(
     "deprecation.showfileUploaderEncoding",
     description="Set to false to disable the deprecation warning for the file uploader encoding.",
+    default_val="True",
+    scriptable="True",
+    type_=bool,
+    expiration_date="2021-01-06",
+)
+
+_create_option(
+    "deprecation.showImageFormat",
+    description="Set to false to disable the deprecation warning for the image format parameter.",
+    default_val="True",
+    scriptable="True",
+    type_=bool,
+    deprecated=True,
+    deprecation_text="The format parameter for st.image has been removed.",
+    expiration_date="2021-03-24",
+)
+
+_create_option(
+    "deprecation.showPyplotGlobalUse",
+    description="Set to false to disable the deprecation warning for using the global pyplot instance.",
     default_val="True",
     scriptable="True",
     type_=bool,
@@ -822,7 +905,7 @@ def _set_option(key, value, where_defined):
     Parameters
     ----------
     key : str
-        The key of the option, like "global.logLevel".
+        The key of the option, like "logger.level".
     value
         The value of the option.
     where_defined : str
@@ -873,11 +956,17 @@ def _maybe_read_env_variable(value):
         variable.
 
     """
+
     if isinstance(value, str) and value.startswith("env:"):
         var_name = value[len("env:") :]
         env_var = os.environ.get(var_name)
 
         if env_var is None:
+            # Import logger locally to prevent circular references
+            from streamlit.logger import get_logger
+
+            LOGGER = get_logger(__name__)
+
             LOGGER.error("No environment variable called %s" % var_name)
         else:
             return _maybe_convert_to_number(env_var)
@@ -948,6 +1037,11 @@ def _check_conflicts():
     #   1. window.location.port, which in dev is going to be (3000)
     #   2. the serverPort value in manifest.json, which would work, but only
     #   exists with server.liveSave.
+
+    # Import logger locally to prevent circular references
+    from streamlit.logger import get_logger
+
+    LOGGER = get_logger(__name__)
 
     if get_option("global.developmentMode"):
         assert _is_unset(

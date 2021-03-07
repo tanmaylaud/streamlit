@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,7 @@ from unittest.mock import patch
 
 import streamlit as st
 from streamlit import config
-from streamlit.uploaded_file_manager import UploadedFile
-from streamlit.file_util import get_encoded_file_data
+from streamlit.uploaded_file_manager import UploadedFileRec, UploadedFile
 from tests import testutil
 
 
@@ -36,24 +35,24 @@ class FileUploaderTest(testutil.DeltaGeneratorTestCase):
         st.file_uploader("the label", type="png")
 
         c = self.get_delta_from_queue().new_element.file_uploader
-        self.assertEqual(c.type, ["png"])
+        self.assertEqual(c.type, [".png"])
 
     def test_multiple_types(self):
         """Test that it can be called using an array for type parameter."""
-        st.file_uploader("the label", type=["png", "svg", "jpeg"])
+        st.file_uploader("the label", type=["png", ".svg", "jpeg"])
 
         c = self.get_delta_from_queue().new_element.file_uploader
-        self.assertEqual(c.type, ["png", "svg", "jpeg"])
+        self.assertEqual(c.type, [".png", ".svg", ".jpeg"])
 
-    # Don't test this yet! Feature was not released. Remove "x" from name to
-    # turn this back on.
-    @patch("streamlit.UploadedFileManager.UploadedFileManager.get_files")
-    def xtest_multiple_files(self, get_files_patch):
+    @patch("streamlit.uploaded_file_manager.UploadedFileManager.get_files")
+    def test_multiple_files(self, get_files_patch):
         """Test the accept_multiple_files flag"""
-        files = [UploadedFile("file1", b"123"), UploadedFile("file2", b"456")]
-        file_vals = [get_encoded_file_data(file.data).getvalue() for file in files]
+        file_recs = [
+            UploadedFileRec("id1", "file1", "type", b"123"),
+            UploadedFileRec("id2", "file2", "type", b"456"),
+        ]
 
-        get_files_patch.return_value = files
+        get_files_patch.return_value = file_recs
 
         for accept_multiple in [True, False]:
             return_val = st.file_uploader(
@@ -62,12 +61,28 @@ class FileUploaderTest(testutil.DeltaGeneratorTestCase):
             c = self.get_delta_from_queue().new_element.file_uploader
             self.assertEqual(accept_multiple, c.multiple_files)
 
-            # If "accept_multiple_files" is True, then we should get a list of values
-            # back. Otherwise, we should just get a single value.
+            # If "accept_multiple_files" is True, then we should get a list of
+            # values back. Otherwise, we should just get a single value.
+
+            # Because file_uploader returns unique UploadedFile instances
+            # each time it's called, we convert the return value back
+            # from UploadedFile -> UploadedFileRec (which implements
+            # equals()) to test equality.
+
             if accept_multiple:
-                self.assertEqual(file_vals, [val.getvalue() for val in return_val])
+                results = [
+                    UploadedFileRec(file.id, file.name, file.type, file.getvalue())
+                    for file in return_val
+                ]
+                self.assertEqual(file_recs, results)
             else:
-                self.assertEqual(file_vals[0], return_val.getvalue())
+                results = UploadedFileRec(
+                    return_val.id,
+                    return_val.name,
+                    return_val.type,
+                    return_val.getvalue(),
+                )
+                self.assertEqual(file_recs[0], results)
 
     def test_max_upload_size_mb(self):
         """Test that the max upload size is the configuration value."""
@@ -77,3 +92,27 @@ class FileUploaderTest(testutil.DeltaGeneratorTestCase):
         self.assertEqual(
             c.max_upload_size_mb, config.get_option("server.maxUploadSize")
         )
+
+    @patch("streamlit.uploaded_file_manager.UploadedFileManager.get_files")
+    def test_unique_uploaded_file_instance(self, get_files_patch):
+        """We should get a unique UploadedFile instance each time we access
+        the file_uploader widget."""
+        file_recs = [
+            UploadedFileRec("id1", "file1", "type", b"123"),
+            UploadedFileRec("id2", "file2", "type", b"456"),
+        ]
+
+        get_files_patch.return_value = file_recs
+
+        # These file_uploaders have different labels so that we don't cause
+        # a DuplicateKey  error - but because we're patching the get_files
+        # function, both file_uploaders will refer to the same files.
+        file1: UploadedFile = st.file_uploader("a", accept_multiple_files=False)
+        file2: UploadedFile = st.file_uploader("b", accept_multiple_files=False)
+
+        self.assertNotEqual(file1, file2)
+
+        # Seeking in one instance should not impact the position in the other.
+        file1.seek(2)
+        self.assertEqual(b"3", file1.read())
+        self.assertEqual(b"123", file2.read())

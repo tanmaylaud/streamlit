@@ -35,11 +35,11 @@ mini-devel: mini-init develop
 
 .PHONY: init
 # Install all Python and JS dependencies.
-init: setup pipenv-install react-init scssvars protobuf
+init: setup pipenv-install react-init protobuf
 
 .PHONY: mini-init
 # Install minimal Python and JS dependencies for development.
-mini-init: setup pipenv-dev-install react-init scssvars protobuf
+mini-init: setup pipenv-dev-install react-init protobuf
 
 .PHONY: frontend
 # Build frontend into static files.
@@ -120,6 +120,18 @@ pycoverage:
 			--cov-report=term-missing tests/ \
 			$(PYTHON_MODULES)
 
+.PHONY: pycoverage_html
+# Generate HTML report of Python test coverage.
+pycoverage_html:
+	# testing + code coverage
+	cd lib; \
+		PYTHONPATH=. \
+		pytest -v \
+			--junitxml=test-reports/pytest/junit.xml \
+			-l $(foreach dir,$(PYTHON_MODULES),--cov=$(dir)) \
+			--cov-report=html tests/ \
+			$(PYTHON_MODULES)
+
 .PHONY: mypy
 # Run Mypy static type checker.
 mypy:
@@ -131,6 +143,11 @@ mypy:
 integration-tests:
 	python scripts/run_bare_integration_tests.py
 
+.PHONY: cli-smoke-tests
+# Verify that CLI boots as expected when called with `python -m streamlit`
+cli-smoke-tests:
+	python scripts/cli_smoke_tests.py
+
 .PHONY: install
 # Install Streamlit into your Python environment.
 install:
@@ -141,13 +158,23 @@ install:
 develop:
 	cd lib ; python setup.py develop
 
-.PHONY: wheel
-# Create a Python wheel file in dist/.
-wheel:
+.PHONY: distribution
+# Create Python distribution files in dist/.
+distribution:
 	# Get rid of the old build folder to make sure that we delete old js and css.
 	rm -rfv lib/build
-	cd lib ; python setup.py bdist_wheel --universal
-	# cd lib ; python setup.py bdist_wheel sdist
+	cd lib ; python setup.py bdist_wheel --universal sdist
+
+.PHONY: clean-package
+# Removes existing packages and creates distribution files in dist/.
+clean-package:
+	rm -rfv lib/dist
+	package
+
+.PHONY: package
+# Create Python distribution files in dist/.
+package: mini-devel frontend install distribution
+
 
 .PHONY: clean
 # Remove all generated files.
@@ -164,7 +191,6 @@ clean: clean-docs
 	rm -rf frontend/node_modules
 	rm -f frontend/src/autogen/proto.js
 	rm -f frontend/src/autogen/proto.d.ts
-	rm -f frontend/src/autogen/scssVariables.ts
 	rm -rf frontend/public/reports
 	find . -name .streamlit -type d -exec rm -rfv {} \; || true
 	cd lib; rm -rf .coverage .coverage\.*
@@ -208,7 +234,7 @@ protobuf:
 		echo ; \
 		./node_modules/protobufjs/bin/pbjs \
 			../proto/streamlit/proto/*.proto \
-			-t static-module --es6 \
+			-t static-module --wrap es6 \
 	) > ./src/autogen/proto.js
 
 	@# Typescript type declarations for our generated protobufs
@@ -230,15 +256,6 @@ react-build:
 	# If you're debugging sharing, you may want to comment this out so that
 	# sourcemaps exist.
 	find lib/streamlit/static -type 'f' -iname '*.map' | xargs rm -fv
-
-.PHONY: scssvars
-# Generate frontend/src/autogen/scssVariables.ts, which has SCSS variables that we can use in TS.
-scssvars: react-init
-	mkdir -p frontend/src/autogen
-	cd frontend ; ( \
-		echo "export const SCSS_VARS = " ; \
-		yarn run --silent scss-to-json src/assets/css/variables.scss \
-	) > src/autogen/scssVariables.ts
 
 .PHONY: jslint
 # Lint the JS code. Saves results to test-reports/eslint/eslint.xml.
@@ -307,7 +324,8 @@ loc:
 # Distributes the package to PyPi
 distribute:
 	cd lib/dist; \
-		twine upload $$(ls -t *.whl | head -n 1)
+		twine upload $$(ls -t *.whl | head -n 1); \
+		twine upload $$(ls -t *.tar.gz | head -n 1)
 
 .PHONY: notices
 # Rebuild the NOTICES file.
@@ -344,7 +362,6 @@ build-circleci:
 .PHONY: run-circleci
 # Run circleci image with volume mounts
 run-circleci:
-	mkdir -p frontend/mochawesome-report
 	docker-compose \
 		-f e2e/docker-compose.yml \
 		run \

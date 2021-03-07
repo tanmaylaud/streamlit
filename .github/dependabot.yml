@@ -1,0 +1,32 @@
+version: 2
+updates:
+  # Keep package.json (& lockfiles) up to date as soon as
+  # new versions are published to the npm registry
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "daily"
+    # Pause Dependabot updates. Security updates are unaffected
+    open-pull-requests-limit: 0
+
+    reviewers:
+      - "streamlit/core"
+
+    labels:
+      - "needs triage"
+      - "infra"
+
+  # Keep Pipfile up to date
+  - package-ecosystem: "pip"
+    directory: "/lib"
+    schedule:
+      interval: "daily"
+    # Pause Dependabot updates. Security updates are unaffected
+    open-pull-requests-limit: 0
+
+    reviewers:
+      - "streamlit/core"
+
+    labels:
+      - "needs triage"
+      - "infra"

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,13 @@
  */
 
 import React from "react"
-import { Select as UISelect, OnChangeParams, Option } from "baseui/select"
-import { Map as ImmutableMap } from "immutable"
+import { Selectbox as SelectboxProto } from "autogen/proto"
 import { WidgetStateManager, Source } from "lib/WidgetStateManager"
-import { logWarning } from "lib/log"
+import UISelectbox from "components/shared/Dropdown"
 
 export interface Props {
   disabled: boolean
-  element: ImmutableMap<string, any>
+  element: SelectboxProto
   widgetMgr: WidgetStateManager
   width: number
 }
@@ -36,14 +35,17 @@ interface State {
   value: number
 }
 
-interface SelectOption {
-  label: string
-  value: string
-}
-
 class Selectbox extends React.PureComponent<Props, State> {
   public state: State = {
-    value: this.props.element.get("default"),
+    value: this.initialValue,
+  }
+
+  get initialValue(): number {
+    // If WidgetStateManager knew a value for this widget, initialize to that.
+    // Otherwise, use the default value from the widget protobuf.
+    const widgetId = this.props.element.id
+    const storedValue = this.props.widgetMgr.getIntValue(widgetId)
+    return storedValue !== undefined ? storedValue : this.props.element.default
   }
 
   public componentDidMount(): void {
@@ -51,80 +53,27 @@ class Selectbox extends React.PureComponent<Props, State> {
   }
 
   private setWidgetValue = (source: Source): void => {
-    const widgetId: string = this.props.element.get("id")
+    const widgetId = this.props.element.id
     this.props.widgetMgr.setIntValue(widgetId, this.state.value, source)
   }
 
-  private onChange = (params: OnChangeParams): void => {
-    if (params.value.length === 0) {
-      logWarning("No value selected!")
-      return
-    }
-
-    const [selected] = params.value
-
-    this.setState({ value: parseInt(selected.value, 10) }, () =>
-      this.setWidgetValue({ fromUi: true })
-    )
-  }
-
-  // Add a custom filterOptions method to filter options only based on labels.
-  // The baseweb default method filters based on labels or indeces
-  // More details: https://github.com/streamlit/streamlit/issues/1010
-  private filterOptions = (
-    options: readonly Option[],
-    filterValue: string
-  ): readonly Option[] => {
-    return options.filter((value: Option) =>
-      (value as SelectOption).label
-        .toLowerCase()
-        .includes(filterValue.toString().toLowerCase())
-    )
+  private onChange = (value: number): void => {
+    this.setState({ value }, () => this.setWidgetValue({ fromUi: true }))
   }
 
   public render = (): React.ReactNode => {
-    const style = { width: this.props.width }
-    const label = this.props.element.get("label")
-    let options = this.props.element.get("options")
-    let { disabled } = this.props
-
-    const value = [
-      {
-        label:
-          options.size > 0
-            ? options.get(this.state.value)
-            : "No options to select.",
-        value: this.state.value.toString(),
-      },
-    ]
-
-    if (options.size === 0) {
-      options = ["No options to select."]
-      disabled = true
-    }
-
-    const selectOptions: SelectOption[] = []
-    options.forEach((option: string, index: number) =>
-      selectOptions.push({
-        label: option,
-        value: index.toString(),
-      })
-    )
+    const { options } = this.props.element
+    const { disabled } = this.props
 
     return (
-      <div className="Widget row-widget stSelectbox" style={style}>
-        <label>{label}</label>
-        <UISelect
-          clearable={false}
-          disabled={disabled}
-          labelKey="label"
-          onChange={this.onChange}
-          options={selectOptions}
-          filterOptions={this.filterOptions}
-          value={value}
-          valueKey="value"
-        />
-      </div>
+      <UISelectbox
+        label={this.props.element.label}
+        options={options}
+        disabled={disabled}
+        width={this.props.width}
+        onChange={this.onChange}
+        value={this.state.value}
+      />
     )
   }
 }

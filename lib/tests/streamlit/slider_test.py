@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -175,4 +175,11 @@ class SliderTest(testutil.DeltaGeneratorTestCase):
             st.slider("Label", value=0.5, min_value=min_value)
         self.assertEqual(
             "`min_value` (%s) must be >= -1.797e+308" % str(min_value), str(exc.value)
+        )
+
+    def test_step_zero(self):
+        with pytest.raises(StreamlitAPIException) as exc:
+            st.slider("Label", min_value=0, max_value=10, step=0)
+        self.assertEqual(
+            "Slider components cannot be passed a `step` of 0.", str(exc.value)
         )

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,7 +108,10 @@ export function dataFrameGetDimensions(df: any): any {
   const [headerRows, dataColsCheck] = columns
     ? indexGetLevelsAndLength(columns)
     : [0, 0]
-  const [dataRows, dataCols] = data ? tableGetRowsAndCols(data) : [0, 0]
+  const [dataRows, dataCols] = data
+    ? tableGetRowsAndCols(data)
+    : // If there is no data, default to the number of header columns
+      [0, dataColsCheck]
 
   if (
     (dataRows !== 0 && dataRows !== dataRowsCheck) ||
@@ -182,6 +185,13 @@ export function dataFrameToArrayOfDicts(df: any): { [key: string]: any } {
   return dataArr
 }
 
+export type DataFrameCellType = "corner" | "col-header" | "row-header" | "data"
+export interface DataFrameCell {
+  contents: any
+  styles: any
+  type: DataFrameCellType
+}
+
 /**
  * Return the (i, j)th element of the DataFrame viewed as a big table including
  * header columns and rows. Returns a dict of
@@ -191,7 +201,7 @@ export function dataFrameToArrayOfDicts(df: any): { [key: string]: any } {
  *  type: 'corner' | 'row-header' | 'col-header' | 'data'
  * }
  */
-export function dataFrameGet(df: any, col: any, row: any): any {
+export function dataFrameGet(df: any, col: any, row: any): DataFrameCell {
   const { headerRows, headerCols } = dataFrameGetDimensions(df)
   if (col < headerCols) {
     if (row < headerRows) {
@@ -349,7 +359,7 @@ export function indexGet(index: any, level: any, i: any): any {
     int_64Index: (idx: any) => idx.getIn(["data", "data", i]),
     float_64Index: (idx: any) => idx.getIn(["data", "data", i]),
     datetimeIndex: (idx: any) =>
-      Format.nanosToDate(idx.getIn(["data", "data", i])),
+      Format.iso8601ToMoment(idx.getIn(["data", "data", i])),
     timedeltaIndex: (idx: any) =>
       Format.nanosToDuration(idx.getIn(["data", "data", i])),
   })
@@ -385,7 +395,7 @@ function anyArrayGet(anyArray: any, i: any): any {
     strings: getData,
     doubles: getData,
     int64s: getData,
-    datetimes: (obj: any) => Format.nanosToDate(getData(obj)),
+    datetimes: (obj: any) => Format.iso8601ToMoment(getData(obj)),
     timedeltas: (obj: any) => Format.nanosToDuration(getData(obj)),
   })
 }

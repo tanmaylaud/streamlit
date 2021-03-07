@@ -1,5 +1,5 @@
 /**
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,16 +18,7 @@ syntax = "proto3";
 
 // A python empty.
 message Balloons {
-  Type type = 1;
+  bool show = 3;  // Dummy boolean because protos need to have something.
 
-  // A random number. If same as previous run, will not reshow balloons.
-  uint32 execution_id = 2;
-
-  enum Type {
-    DEFAULT = 0;
-    BALLOON = 1;
-    HAPPY_FACE = 2;
-    STAR_FACE = 3;
-    COOL_FACE = 4;
-  }
+  reserved 1, 2;
 }

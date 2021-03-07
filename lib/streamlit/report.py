@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -139,7 +139,7 @@ class Report(object):
         -------
         list of tuples
             See `CloudStorage.save_report_files()` for schema. But as to the
-            output of this method, it's just a manifest pointing to the Server
+            output of this method, it's a manifest pointing to the Server
             so browsers who go to the shareable report URL can connect to it
             live.
 

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,20 @@
  */
 
 import React from "react"
-import { shallow } from "enzyme"
-import { fromJS } from "immutable"
-import { radioOverrides } from "lib/widgetTheme"
+import { mount } from "lib/test_util"
 import { WidgetStateManager } from "lib/WidgetStateManager"
 
 import { Radio as UIRadio, RadioGroup } from "baseui/radio"
+import { Radio as RadioProto } from "autogen/proto"
 import Radio, { Props } from "./Radio"
 
 jest.mock("lib/WidgetStateManager")
 
 const sendBackMsg = jest.fn()
 
-const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
-  element: fromJS({
-    id: 1,
+const getProps = (elementProps: Partial<RadioProto> = {}): Props => ({
+  element: RadioProto.create({
+    id: "1",
     label: "Label",
     default: 0,
     options: ["a", "b", "c"],
@@ -41,9 +40,9 @@ const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
   widgetMgr: new WidgetStateManager(sendBackMsg),
 })
 
-describe("Checkbox widget", () => {
+describe("Radio widget", () => {
   const props = getProps()
-  const wrapper = shallow(<Radio {...props} />)
+  const wrapper = mount(<Radio {...props} />)
 
   it("renders without crashing", () => {
     expect(wrapper.find(RadioGroup).length).toBe(1)
@@ -52,8 +51,8 @@ describe("Checkbox widget", () => {
 
   it("should set widget value on did mount", () => {
     expect(props.widgetMgr.setIntValue).toHaveBeenCalledWith(
-      props.element.get("id"),
-      props.element.get("default"),
+      props.element.id,
+      props.element.default,
       { fromUi: false }
     )
   })
@@ -65,7 +64,6 @@ describe("Checkbox widget", () => {
     // @ts-ignore
     const splittedClassName = className.split(" ")
 
-    expect(splittedClassName).toContain("Widget")
     expect(splittedClassName).toContain("row-widget")
     expect(splittedClassName).toContain("stRadio")
 
@@ -74,12 +72,12 @@ describe("Checkbox widget", () => {
   })
 
   it("should render a label", () => {
-    expect(wrapper.find("label").text()).toBe(props.element.get("label"))
+    expect(wrapper.find("StyledWidgetLabel").text()).toBe(props.element.label)
   })
 
   it("should have a default value", () => {
     expect(wrapper.find(RadioGroup).prop("value")).toBe(
-      props.element.get("default").toString()
+      props.element.default.toString()
     )
   })
 
@@ -92,10 +90,7 @@ describe("Checkbox widget", () => {
 
     options.forEach((option, index) => {
       expect(option.prop("value")).toBe(index.toString())
-      expect(option.prop("children")).toBe(
-        props.element.get("options").get(index)
-      )
-      expect(option.prop("overrides")).toBe(radioOverrides)
+      expect(option.prop("children")).toBe(props.element.options[index])
     })
   })
 
@@ -103,7 +98,7 @@ describe("Checkbox widget", () => {
     const props = getProps({
       options: [],
     })
-    const wrapper = shallow(<Radio {...props} />)
+    const wrapper = mount(<Radio {...props} />)
 
     expect(wrapper.find(UIRadio).length).toBe(1)
     expect(wrapper.find(UIRadio).prop("children")).toBe(
@@ -118,10 +113,11 @@ describe("Checkbox widget", () => {
         value: "1",
       },
     } as React.ChangeEvent<HTMLInputElement>)
+    wrapper.update()
 
     expect(wrapper.find(RadioGroup).prop("value")).toBe("1")
     expect(props.widgetMgr.setIntValue).toHaveBeenCalledWith(
-      props.element.get("id"),
+      props.element.id,
       1,
       { fromUi: true }
     )

@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,19 +13,21 @@
 # limitations under the License.
 
 """st.caching unit tests."""
-from unittest.mock import patch
 import threading
-import unittest
-import pytest
 import types
+import unittest
+from unittest.mock import patch, Mock
 
+from parameterized import parameterized
+
+import streamlit as st
 from streamlit import caching
 from streamlit import hashing
-from streamlit.hashing import UserHashError
-from streamlit.elements import exception_proto
+from streamlit.elements import exception
+from streamlit.error_util import _GENERIC_UNCAUGHT_EXCEPTION_TEXT
+from streamlit.proto.Alert_pb2 import Alert
 from streamlit.proto.Exception_pb2 import Exception as ExceptionProto
 from tests import testutil
-import streamlit as st
 
 
 class CacheTest(testutil.DeltaGeneratorTestCase):
@@ -34,6 +36,7 @@ class CacheTest(testutil.DeltaGeneratorTestCase):
         # Reset default values on teardown.
         st.caching._cache_info.cached_func_stack = []
         st.caching._cache_info.suppress_st_function_warning = 0
+        super().tearDown()
 
     def test_simple(self):
         @st.cache
@@ -347,6 +350,67 @@ class CacheTest(testutil.DeltaGeneratorTestCase):
         self.assertEqual([0, 1, 2, 0, 1, 2], foo_vals)
         self.assertEqual([0, 1, 2, 0, 1, 2], bar_vals)
 
+    def test_unique_function_caches(self):
+        """Each function should have its own cache, even if it has an
+        identical body and arguments to another cached function.
+        """
+
+        @st.cache
+        def foo():
+            return []
+
+        @st.cache
+        def bar():
+            return []
+
+        id_foo = id(foo())
+        id_bar = id(bar())
+        self.assertNotEqual(id_foo, id_bar)
+
+    def test_function_body_uses_hashfuncs(self):
+        hash_func = Mock(return_value=None)
+
+        # This is an external object that's referenced by our
+        # function. It cannot be hashed (without a custom hashfunc).
+        dict_gen = {1: (x for x in range(1))}
+
+        @st.cache(hash_funcs={"builtins.generator": hash_func})
+        def foo(arg):
+            # Reference the generator object. It will be hashed when we
+            # hash the function body to generate foo's cache_key.
+            print(dict_gen)
+            return []
+
+        foo(1)
+        foo(2)
+        hash_func.assert_called_once()
+
+    def test_function_body_uses_nested_listcomps(self):
+        @st.cache()
+        def foo(arg):
+            production = [[outer + inner for inner in range(3)] for outer in range(3)]
+            return production
+
+        # make sure st.cache() doesn't crash, per https://github.com/streamlit/streamlit/issues/2305
+        self.assertEqual(foo(1), [[0, 1, 2], [1, 2, 3], [2, 3, 4]])
+
+    def test_function_name_does_not_use_hashfuncs(self):
+        """Hash funcs should only be used on arguments to a function,
+        and not when computing the key for a function's unique MemCache.
+        """
+
+        str_hash_func = Mock(return_value=None)
+
+        @st.cache(hash_funcs={str: str_hash_func})
+        def foo(string_arg):
+            return []
+
+        # If our str hash_func is called multiple times, it's probably because
+        # it's being used to compute the function's cache_key (as opposed to
+        # the value_key). It should only be used to compute the value_key!
+        foo("ahoy")
+        str_hash_func.assert_called_once_with("ahoy")
+
 
 # Temporarily turn off these tests since there's no Cache object in __init__
 # right now.
@@ -433,22 +497,28 @@ to suppress the warning.
         el = self.get_delta_from_queue(-1).new_element
         self.assertEqual(el.markdown.body, "hi")
 
-    def test_mutation_warning_text(self):
-        @st.cache
-        def mutation_warning_func():
-            return []
+    @parameterized.expand([(True,), (False,)])
+    def test_mutation_warning_text(self, show_error_details: bool):
+        with testutil.patch_config_options(
+            {"client.showErrorDetails": show_error_details}
+        ):
 
-        a = mutation_warning_func()
-        a.append("mutated!")
-        mutation_warning_func()
+            @st.cache
+            def mutation_warning_func():
+                return []
 
-        el = self.get_delta_from_queue(-1).new_element
-        self.assertEqual(el.exception.type, "CachedObjectMutationWarning")
+            a = mutation_warning_func()
+            a.append("mutated!")
+            mutation_warning_func()
 
-        self.assertEqual(
-            normalize_md(el.exception.message),
-            normalize_md(
-                """
+            if show_error_details:
+                el = self.get_delta_from_queue(-1).new_element
+                self.assertEqual(el.exception.type, "CachedObjectMutationWarning")
+
+                self.assertEqual(
+                    normalize_md(el.exception.message),
+                    normalize_md(
+                        """
 Return value of `mutation_warning_func()` was mutated between runs.
 
 By default, Streamlit\'s cache should be treated as immutable, or it may behave
@@ -462,16 +532,21 @@ How to fix this:
   - Otherwise, you could also clone the returned value so you can freely
     mutate it.
 * If you actually meant to mutate the return value and know the consequences of
-doing so, just annotate the function with `@st.cache(allow_output_mutation=True)`.
+doing so, annotate the function with `@st.cache(allow_output_mutation=True)`.
 
 For more information and detailed solutions check out [our
-documentation.](https://docs.streamlit.io/en/latest/advanced_caching.html)
-            """
-            ),
-        )
-        self.assertNotEqual(len(el.exception.stack_trace), 0)
-        self.assertEqual(el.exception.message_is_markdown, True)
-        self.assertEqual(el.exception.is_warning, True)
+documentation.](https://docs.streamlit.io/en/latest/caching.html)
+                    """
+                    ),
+                )
+                self.assertNotEqual(len(el.exception.stack_trace), 0)
+                self.assertEqual(el.exception.message_is_markdown, True)
+                self.assertEqual(el.exception.is_warning, True)
+            else:
+                el = self.get_delta_from_queue(-1).new_element
+                self.assertEqual(el.WhichOneof("type"), "alert")
+                self.assertEqual(el.alert.format, Alert.ERROR)
+                self.assertEqual(el.alert.body, _GENERIC_UNCAUGHT_EXCEPTION_TEXT)
 
     def test_unhashable_type(self):
         @st.cache
@@ -482,7 +557,7 @@ documentation.](https://docs.streamlit.io/en/latest/advanced_caching.html)
             unhashable_type_func()
 
         ep = ExceptionProto()
-        exception_proto.marshall(ep, cm.exception)
+        exception.marshall(ep, cm.exception)
 
         self.assertEqual(ep.type, "UnhashableTypeError")
 
@@ -557,7 +632,7 @@ Object of type _thread.lock:
             user_hash_error_func(my_obj)
 
         ep = ExceptionProto()
-        exception_proto.marshall(ep, cm.exception)
+        exception.marshall(ep, cm.exception)
 
         self.assertEqual(ep.type, "TypeError")
         self.assertTrue(

@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 import json
 import os
 import unittest
+from typing import Any
 from unittest import mock
 
 import pandas as pd
@@ -28,12 +29,29 @@ from streamlit.components.v1.components import ComponentRequestHandler
 from streamlit.components.v1.components import CustomComponent
 from streamlit.components.v1.components import declare_component
 import streamlit.components.v1 as components
+from streamlit.elements import arrow_table
 from streamlit.errors import DuplicateWidgetID
+from streamlit.proto.ComponentInstance_pb2 import SpecialArg
+from streamlit.type_util import to_bytes
 from tests import testutil
 from tests.testutil import DeltaGeneratorTestCase
 
 URL = "http://not.a.real.url:3001"
 PATH = "not/a/real/path"
+
+
+def _serialize_dataframe_arg(key: str, value: Any) -> SpecialArg:
+    special_arg = SpecialArg()
+    special_arg.key = key
+    arrow_table.marshall(special_arg.arrow_dataframe.data, value)
+    return special_arg
+
+
+def _serialize_bytes_arg(key: str, value: Any) -> SpecialArg:
+    special_arg = SpecialArg()
+    special_arg.key = key
+    special_arg.bytes = to_bytes(value)
+    return special_arg
 
 
 class DeclareComponentTest(unittest.TestCase):
@@ -52,14 +70,16 @@ class DeclareComponentTest(unittest.TestCase):
         from component_test_data import component as init_component
 
         self.assertEqual(
-            "component_test_data.foo", init_component.name,
+            "component_test_data.foo",
+            init_component.name,
         )
 
         # Test a component defined in a module within a package
         from component_test_data.outer_module import component as outer_module_component
 
         self.assertEqual(
-            "component_test_data.outer_module.foo", outer_module_component.name,
+            "component_test_data.outer_module.foo",
+            outer_module_component.name,
         )
 
         # Test a component defined in module within a nested package
@@ -68,7 +88,8 @@ class DeclareComponentTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            "component_test_data.nested.inner_module.foo", inner_module_component.name,
+            "component_test_data.nested.inner_module.foo",
+            inner_module_component.name,
         )
 
     def test_only_path(self):
@@ -202,8 +223,10 @@ class InvokeComponentTest(DeltaGeneratorTestCase):
         proto = self.get_delta_from_queue().new_element.component_instance
 
         self.assertEqual(self.test_component.name, proto.component_name)
-        self.assertEqual(json.dumps({"foo": "bar"}), proto.args_json)
-        self.assertEqual("[]", str(proto.args_dataframe))
+        self.assertJSONEqual(
+            {"foo": "bar", "key": None, "default": None}, proto.json_args
+        )
+        self.assertEqual("[]", str(proto.special_args))
 
     def test_only_df_args(self):
         """Test that component with only dataframe args is marshalled correctly."""
@@ -217,16 +240,19 @@ class InvokeComponentTest(DeltaGeneratorTestCase):
         proto = self.get_delta_from_queue().new_element.component_instance
 
         self.assertEqual(self.test_component.name, proto.component_name)
-        self.assertEqual("{}", proto.args_json)
-        # (HK) TODO: Add assertEqual check for Apache Arrow pybytes.
-        self.assertIsNotNone(proto.args_dataframe)
+        self.assertJSONEqual({"key": None, "default": None}, proto.json_args)
+        self.assertEqual(1, len(proto.special_args))
+        self.assertEqual(_serialize_dataframe_arg("df", df), proto.special_args[0])
 
     def test_only_list_args(self):
         """Test that component with only list args is marshalled correctly."""
         self.test_component(data=["foo", "bar", "baz"])
         proto = self.get_delta_from_queue().new_element.component_instance
-        self.assertEqual(json.dumps({"data": ["foo", "bar", "baz"]}), proto.args_json)
-        self.assertEqual("[]", str(proto.args_dataframe))
+        self.assertJSONEqual(
+            {"data": ["foo", "bar", "baz"], "key": None, "default": None},
+            proto.json_args,
+        )
+        self.assertEqual("[]", str(proto.special_args))
 
     def test_no_args(self):
         """Test that component with no args is marshalled correctly."""
@@ -234,36 +260,113 @@ class InvokeComponentTest(DeltaGeneratorTestCase):
         proto = self.get_delta_from_queue().new_element.component_instance
 
         self.assertEqual(self.test_component.name, proto.component_name)
-        self.assertEqual("{}", proto.args_json)
-        self.assertEqual("[]", str(proto.args_dataframe))
+        self.assertJSONEqual({"key": None, "default": None}, proto.json_args)
+        self.assertEqual("[]", str(proto.special_args))
 
-    def test_json_and_df_args(self):
-        """Test that component with json and dataframe args is marshalled correctly."""
-        raw_data = {
-            "First Name": ["Jason", "Molly"],
-            "Last Name": ["Miller", "Jacobson"],
-            "Age": [42, 52],
-        }
-        df = pd.DataFrame(raw_data, columns=["First Name", "Last Name", "Age"])
-        self.test_component(foo="bar", df=df)
+    def test_bytes_args(self):
+        self.test_component(foo=b"foo", bar=b"bar")
+        proto = self.get_delta_from_queue().new_element.component_instance
+        self.assertJSONEqual({"key": None, "default": None}, proto.json_args)
+        self.assertEqual(2, len(proto.special_args))
+        self.assertEqual(
+            _serialize_bytes_arg("foo", b"foo"),
+            proto.special_args[0],
+        )
+        self.assertEqual(
+            _serialize_bytes_arg("bar", b"bar"),
+            proto.special_args[1],
+        )
+
+    def test_mixed_args(self):
+        """Test marshalling of a component with varied arg types."""
+        df = pd.DataFrame(
+            {
+                "First Name": ["Jason", "Molly"],
+                "Last Name": ["Miller", "Jacobson"],
+                "Age": [42, 52],
+            },
+            columns=["First Name", "Last Name", "Age"],
+        )
+        self.test_component(string_arg="string", df_arg=df, bytes_arg=b"bytes")
         proto = self.get_delta_from_queue().new_element.component_instance
 
         self.assertEqual(self.test_component.name, proto.component_name)
-        self.assertEqual(json.dumps({"foo": "bar"}), proto.args_json)
-        # (HK) TODO: Add assertEqual check for Apache Arrow pybytes.
-        self.assertIsNotNone(proto.args_dataframe)
+        self.assertJSONEqual(
+            {"string_arg": "string", "key": None, "default": None},
+            proto.json_args,
+        )
+        self.assertEqual(2, len(proto.special_args))
+        self.assertEqual(_serialize_dataframe_arg("df_arg", df), proto.special_args[0])
+        self.assertEqual(
+            _serialize_bytes_arg("bytes_arg", b"bytes"), proto.special_args[1]
+        )
 
-    def test_key(self):
+    def test_duplicate_key(self):
         """Two components with the same `key` should throw DuplicateWidgetID exception"""
         self.test_component(foo="bar", key="baz")
 
         with self.assertRaises(DuplicateWidgetID):
             self.test_component(key="baz")
 
-    def test_default(self):
-        """Test the 'default' param."""
-        return_value = self.test_component(foo="bar", default="baz")
+    def test_key_sent_to_frontend(self):
+        """We send the 'key' param to the frontend (even if it's None)."""
+        # Test a string key
+        self.test_component(key="baz")
+        proto = self.get_delta_from_queue().new_element.component_instance
+        self.assertJSONEqual({"key": "baz", "default": None}, proto.json_args)
+
+        # Test an empty key
+        self.test_component()
+        proto = self.get_delta_from_queue().new_element.component_instance
+        self.assertJSONEqual({"key": None, "default": None}, proto.json_args)
+
+    def test_simple_default(self):
+        """Test the 'default' param with a JSON value."""
+        return_value = self.test_component(default="baz")
         self.assertEqual("baz", return_value)
+
+        proto = self.get_delta_from_queue().new_element.component_instance
+        self.assertJSONEqual({"key": None, "default": "baz"}, proto.json_args)
+
+    def test_bytes_default(self):
+        """Test the 'default' param with a bytes value."""
+        return_value = self.test_component(default=b"bytes")
+        self.assertEqual(b"bytes", return_value)
+
+        proto = self.get_delta_from_queue().new_element.component_instance
+        self.assertJSONEqual({"key": None}, proto.json_args)
+        self.assertEqual(
+            _serialize_bytes_arg("default", b"bytes"),
+            proto.special_args[0],
+        )
+
+    def test_df_default(self):
+        """Test the 'default' param with a DataFrame value."""
+        df = pd.DataFrame(
+            {
+                "First Name": ["Jason", "Molly"],
+                "Last Name": ["Miller", "Jacobson"],
+                "Age": [42, 52],
+            },
+            columns=["First Name", "Last Name", "Age"],
+        )
+        return_value = self.test_component(default=df)
+        self.assertTrue(df.equals(return_value), "df != return_value")
+
+        proto = self.get_delta_from_queue().new_element.component_instance
+        self.assertJSONEqual({"key": None}, proto.json_args)
+        self.assertEqual(
+            _serialize_dataframe_arg("default", df),
+            proto.special_args[0],
+        )
+
+    def assertJSONEqual(self, a, b):
+        """Asserts that two JSON dicts are equal. If either arg is a string,
+        it will be first converted to a dict with json.loads()."""
+        # Ensure both objects are dicts.
+        dict_a = a if isinstance(a, dict) else json.loads(a)
+        dict_b = b if isinstance(b, dict) else json.loads(b)
+        self.assertEqual(dict_a, dict_b)
 
 
 class ComponentRequestHandlerTest(tornado.testing.AsyncHTTPTestCase):
@@ -322,7 +425,8 @@ class ComponentRequestHandlerTest(tornado.testing.AsyncHTTPTestCase):
 
         self.assertEqual(404, response.code)
         self.assertEqual(
-            b"components_test.test read error: Invalid content", response.body,
+            b"components_test.test read error: Invalid content",
+            response.body,
         )
 
 

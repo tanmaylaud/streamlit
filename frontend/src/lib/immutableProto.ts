@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
  */
 
 import { fromJS, Map } from "immutable"
-import { IS_DEV_ENV } from "./baseconsts"
-import { logMessage } from "./log"
 
 /**
  * Converts a protobuf JS object into its immutable counterpart.
@@ -27,9 +25,6 @@ export function toImmutableProto(messageType: any, message: any): any {
     defaults: true,
     oneofs: true,
   })
-  if (IS_DEV_ENV) {
-    logMessage("Protobuf: ", x)
-  }
   return fromJS(x)
 }
 
@@ -85,7 +80,7 @@ export function updateOneOf(
  *
  * obj   - The immutable protobuf object we're applying this to.
  * name  - The name of the oneof field.
- * funcs - Dictionary of values, one for each oneof field.
+ * values - Dictionary of values, one for each oneof field.
  */
 export function mapOneOf(
   obj: Map<string, any>,

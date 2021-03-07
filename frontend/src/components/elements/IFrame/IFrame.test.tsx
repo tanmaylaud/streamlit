@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,17 +15,19 @@
  * limitations under the License.
  */
 
-import { shallow, ShallowWrapper } from "enzyme"
-import { fromJS } from "immutable"
+import React from "react"
+import { ShallowWrapper } from "enzyme"
+import { shallow } from "lib/test_util"
 import {
   DEFAULT_IFRAME_FEATURE_POLICY,
-  getIFrameSandboxPolicy,
+  DEFAULT_IFRAME_SANDBOX_POLICY,
 } from "lib/IFrameUtil"
-import React from "react"
-import IFrame, { Props } from "./IFrame"
 
-const getProps = (elementProps: Record<string, unknown> = {}): Props => ({
-  element: fromJS({
+import { IFrame as IFrameProto } from "autogen/proto"
+import IFrame, { IFrameProps } from "./IFrame"
+
+const getProps = (elementProps: Partial<IFrameProto> = {}): IFrameProps => ({
+  element: IFrameProto.create({
     ...elementProps,
   }),
   width: 100,
@@ -52,7 +54,7 @@ describe("st.iframe", () => {
     beforeAll(() => {
       const props = getProps({
         src: "foo",
-        srcDoc: "bar",
+        srcdoc: "bar",
       })
       wrapper = shallow(<IFrame {...props} />)
     })
@@ -71,9 +73,9 @@ describe("st.iframe", () => {
       )
     })
 
-    it("should add `allow-same-origin` parameter to iframe sandbox", () => {
+    it("should use our default sandbox policy", () => {
       expect(wrapper.find("iframe").prop("sandbox")).toBe(
-        getIFrameSandboxPolicy(true)
+        DEFAULT_IFRAME_SANDBOX_POLICY
       )
     })
   })
@@ -98,9 +100,9 @@ describe("st.iframe", () => {
       )
     })
 
-    it("should not add `allow-same-origin` parameter to iframe sandbox", () => {
+    it("should use our default sandbox policy", () => {
       expect(wrapper.find("iframe").prop("sandbox")).toBe(
-        getIFrameSandboxPolicy(false)
+        DEFAULT_IFRAME_SANDBOX_POLICY
       )
     })
   })

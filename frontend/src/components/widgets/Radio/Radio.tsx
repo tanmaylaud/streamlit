@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,13 @@
  */
 
 import React from "react"
-import { Radio as UIRadio, RadioGroup } from "baseui/radio"
-import { Map as ImmutableMap } from "immutable"
+import UIRadio from "components/shared/Radio"
+import { Radio as RadioProto } from "autogen/proto"
 import { WidgetStateManager, Source } from "lib/WidgetStateManager"
-import { radioOverrides } from "lib/widgetTheme"
 
 export interface Props {
   disabled: boolean
-  element: ImmutableMap<string, any>
+  element: RadioProto
   widgetMgr: WidgetStateManager
   width: number
 }
@@ -38,7 +37,15 @@ interface State {
 
 class Radio extends React.PureComponent<Props, State> {
   public state: State = {
-    value: this.props.element.get("default"),
+    value: this.initialValue,
+  }
+
+  get initialValue(): number {
+    // If WidgetStateManager knew a value for this widget, initialize to that.
+    // Otherwise, use the default value from the widget protobuf.
+    const widgetId = this.props.element.id
+    const storedValue = this.props.widgetMgr.getIntValue(widgetId)
+    return storedValue !== undefined ? storedValue : this.props.element.default
   }
 
   public componentDidMount(): void {
@@ -46,45 +53,29 @@ class Radio extends React.PureComponent<Props, State> {
   }
 
   private setWidgetValue = (source: Source): void => {
-    const widgetId: string = this.props.element.get("id")
+    const widgetId = this.props.element.id
     this.props.widgetMgr.setIntValue(widgetId, this.state.value, source)
   }
 
-  private onChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    const value = parseInt(e.target.value, 10)
-    this.setState({ value }, () => this.setWidgetValue({ fromUi: true }))
+  private onChange = (selectedIndex: number): void => {
+    this.setState({ value: selectedIndex }, () =>
+      this.setWidgetValue({ fromUi: true })
+    )
   }
 
   public render = (): React.ReactNode => {
-    const style = { width: this.props.width }
-    const label = this.props.element.get("label")
-    let options = this.props.element.get("options")
-    let { disabled } = this.props
-
-    if (options.size === 0) {
-      options = ["No options to select."]
-      disabled = true
-    }
+    const { disabled, element, width } = this.props
+    const { options, label } = element
 
     return (
-      <div className="Widget row-widget stRadio" style={style}>
-        <label>{label}</label>
-        <RadioGroup
-          onChange={this.onChange}
-          value={this.state.value.toString()}
-          disabled={disabled}
-        >
-          {options.map((option: string, index: number) => (
-            <UIRadio
-              key={index}
-              value={index.toString()}
-              overrides={radioOverrides}
-            >
-              {option}
-            </UIRadio>
-          ))}
-        </RadioGroup>
-      </div>
+      <UIRadio
+        label={label}
+        onChange={this.onChange}
+        options={options}
+        width={width}
+        disabled={disabled}
+        value={this.state.value}
+      />
     )
   }
 }

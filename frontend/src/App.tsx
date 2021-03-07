@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,13 +17,15 @@
 
 import React, { Fragment, PureComponent, ReactNode } from "react"
 import moment from "moment"
-import { HotKeys } from "react-hotkeys"
-import { fromJS, List } from "immutable"
+import { HotKeys, KeyMap } from "react-hotkeys"
+import { fromJS } from "immutable"
 import classNames from "classnames"
 // Other local imports.
-import ReportView from "components/core/ReportView/"
-import { StatusWidget } from "components/core/StatusWidget/"
-import MainMenu from "components/core/MainMenu/"
+import PageLayoutContext from "components/core/PageLayoutContext"
+import ReportView from "components/core/ReportView"
+import StatusWidget from "components/core/StatusWidget"
+import MainMenu from "components/core/MainMenu"
+import Header from "components/core/Header"
 import {
   DialogProps,
   DialogType,
@@ -35,30 +37,26 @@ import { ConnectionState } from "lib/ConnectionState"
 import { ReportRunState } from "lib/ReportRunState"
 import { SessionEventDispatcher } from "lib/SessionEventDispatcher"
 import {
-  applyDelta,
-  BlockElement,
-  Elements,
-  ReportElement,
-  SimpleElement,
-} from "lib/DeltaParser"
-import {
   setCookie,
-  flattenElements,
   hashString,
   isEmbeddedInIFrame,
-  makeElementWithInfoText,
+  notUndefined,
+  getElementWidgetID,
 } from "lib/utils"
 import {
   BackMsg,
   Delta,
   ForwardMsg,
-  IForwardMsgMetadata,
-  ISessionState,
+  ForwardMsgMetadata,
   Initialize,
   NewReport,
+  IDeployParams,
+  PageConfig,
   PageInfo,
   SessionEvent,
   WidgetStates,
+  SessionState,
+  Config,
 } from "autogen/proto"
 
 import { RERUN_PROMPT_MODAL_DIALOG } from "lib/baseconsts"
@@ -67,24 +65,32 @@ import { MetricsManager } from "lib/MetricsManager"
 import { FileUploadClient } from "lib/FileUploadClient"
 
 import { logError, logMessage } from "lib/log"
-// WARNING: order matters
-import "assets/css/theme.scss"
-import "./App.scss"
-import "assets/css/header.scss"
 import { UserSettings } from "components/core/StreamlitDialog/UserSettings"
+import { ReportRoot } from "./lib/ReportNode"
 import { ComponentRegistry } from "./components/widgets/CustomComponent"
+import { handleFavicon } from "./components/elements/Favicon"
+import { StyledApp } from "./styled-components"
+
+import withS4ACommunication, {
+  S4ACommunicationHOC,
+} from "./hocs/withS4ACommunication/withS4ACommunication"
 
 import withScreencast, {
   ScreenCastHOC,
 } from "./hocs/withScreencast/withScreencast"
 
+// WARNING: order matters
+import "assets/css/theme.scss"
+
 export interface Props {
   screenCast: ScreenCastHOC
+  s4aCommunication: S4ACommunicationHOC
 }
 
 interface State {
   connectionState: ConnectionState
-  elements: Elements
+  elements: ReportRoot
+  isFullScreen: boolean
   reportId: string
   reportName: string
   reportHash: string | null
@@ -92,10 +98,15 @@ interface State {
   userSettings: UserSettings
   dialog?: DialogProps | null
   sharingEnabled?: boolean
+  layout: PageConfig.Layout
+  initialSidebarState: PageConfig.SidebarState
+  allowRunOnSave: boolean
+  deployParams?: IDeployParams | null
 }
 
 const ELEMENT_LIST_BUFFER_TIMEOUT_MS = 10
 
+// eslint-disable-next-line
 declare global {
   interface Window {
     streamlitDebug: any
@@ -113,9 +124,18 @@ export class App extends PureComponent<Props, State> {
 
   private readonly uploadClient: FileUploadClient
 
-  private elementListBuffer: Elements | null
+  /**
+   * When new Deltas are received, they are applied to `pendingElementsBuffer`
+   * rather than directly to `this.state.elements`. We assign
+   * `pendingElementsBuffer` to `this.state` on a timer, in order to
+   * decouple Delta updates from React re-renders, for performance reasons.
+   *
+   * (If `pendingElementsBuffer === this.state.elements` - the default state -
+   * then we have no pending elements.)
+   */
+  private pendingElementsBuffer: ReportRoot
 
-  private elementListBufferTimerIsSet: boolean
+  private pendingElementsTimerRunning: boolean
 
   private readonly componentRegistry: ComponentRegistry
 
@@ -124,16 +144,8 @@ export class App extends PureComponent<Props, State> {
 
     this.state = {
       connectionState: ConnectionState.INITIAL,
-      elements: {
-        main: fromJS([
-          {
-            element: makeElementWithInfoText("Please wait..."),
-            metadata: {},
-            reportId: "no report",
-          },
-        ]),
-        sidebar: fromJS([]),
-      },
+      elements: ReportRoot.empty("Please wait..."),
+      isFullScreen: false,
       reportName: "",
       reportId: "<null>",
       reportHash: null,
@@ -142,6 +154,10 @@ export class App extends PureComponent<Props, State> {
         wideMode: false,
         runOnSave: false,
       },
+      layout: PageConfig.Layout.CENTERED,
+      initialSidebarState: PageConfig.SidebarState.AUTO,
+      allowRunOnSave: true,
+      deployParams: null,
     }
 
     this.sessionEventDispatcher = new SessionEventDispatcher()
@@ -158,8 +174,8 @@ export class App extends PureComponent<Props, State> {
         ? this.connectionManager.getBaseUriParts()
         : undefined
     })
-    this.elementListBufferTimerIsSet = false
-    this.elementListBuffer = null
+    this.pendingElementsTimerRunning = false
+    this.pendingElementsBuffer = this.state.elements
 
     window.streamlitDebug = {}
     window.streamlitDebug.closeConnection = this.closeConnection.bind(this)
@@ -168,14 +184,18 @@ export class App extends PureComponent<Props, State> {
   /**
    * Global keyboard shortcuts.
    */
+  keyMap: KeyMap = {
+    RERUN: "r",
+    CLEAR_CACHE: "c",
+    // We use key up for stop recording to ensure the esc key doesn't trigger
+    // other actions (like exiting modals)
+    STOP_RECORDING: { sequence: "esc", action: "keyup" },
+  }
+
   keyHandlers = {
-    // The r key reruns the script.
-    r: (): void => this.rerunScript(),
-
-    // The c key clears the cache.
-    c: (): void => this.openClearCacheDialog(),
-
-    esc: this.props.screenCast.stopRecording,
+    RERUN: () => this.rerunScript(),
+    CLEAR_CACHE: () => this.openClearCacheDialog(),
+    STOP_RECORDING: this.props.screenCast.stopRecording,
   }
 
   componentDidMount(): void {
@@ -192,6 +212,15 @@ export class App extends PureComponent<Props, State> {
     }
 
     MetricsManager.current.enqueue("viewReport")
+  }
+
+  componentDidUpdate(prevProps: Readonly<Props>): void {
+    if (
+      prevProps.s4aCommunication.currentState.queryParams !==
+      this.props.s4aCommunication.currentState.queryParams
+    ) {
+      this.sendRerunBackMsg()
+    }
   }
 
   showError(title: string, errorNode: ReactNode): void {
@@ -242,6 +271,10 @@ export class App extends PureComponent<Props, State> {
       this.setState({ dialog: null })
     } else {
       setCookie("_xsrf", "")
+
+      if (SessionInfo.isSet()) {
+        SessionInfo.clearSession()
+      }
     }
   }
 
@@ -261,21 +294,24 @@ export class App extends PureComponent<Props, State> {
 
     try {
       dispatchProto(msgProto, "type", {
-        initialize: (initializeMsg: Initialize) =>
-          this.handleInitialize(initializeMsg),
-        sessionStateChanged: (msg: ISessionState) =>
+        newReport: (newReportMsg: NewReport) =>
+          this.handleNewReport(newReportMsg),
+        sessionStateChanged: (msg: SessionState) =>
           this.handleSessionStateChanged(msg),
         sessionEvent: (evtMsg: SessionEvent) =>
           this.handleSessionEvent(evtMsg),
-        newReport: (newReportMsg: NewReport) =>
-          this.handleNewReport(newReportMsg),
         delta: (deltaMsg: Delta) =>
-          this.handleDeltaMsg(deltaMsg, msgProto.metadata),
+          this.handleDeltaMsg(
+            deltaMsg,
+            msgProto.metadata as ForwardMsgMetadata
+          ),
+        pageConfigChanged: (pageConfig: PageConfig) =>
+          this.handlePageConfigChanged(pageConfig),
         pageInfoChanged: (pageInfo: PageInfo) =>
           this.handlePageInfoChanged(pageInfo),
         reportFinished: (status: ForwardMsg.ReportFinishedStatus) =>
           this.handleReportFinished(status),
-        uploadReportProgress: (progress: string | number) =>
+        uploadReportProgress: (progress: number) =>
           this.handleUploadReportProgress(progress),
         reportUploaded: (url: string) => this.handleReportUploaded(url),
       })
@@ -285,7 +321,7 @@ export class App extends PureComponent<Props, State> {
     }
   }
 
-  handleUploadReportProgress = (progress: string | number): void => {
+  handleUploadReportProgress = (progress: number): void => {
     const newDialog: DialogProps = {
       type: DialogType.UPLOAD_PROGRESS,
       progress,
@@ -303,70 +339,55 @@ export class App extends PureComponent<Props, State> {
     this.openDialog(newDialog)
   }
 
+  handlePageConfigChanged = (pageConfig: PageConfig): void => {
+    const { title, favicon, layout, initialSidebarState } = pageConfig
+
+    if (title) {
+      this.props.s4aCommunication.sendMessage({
+        type: "SET_PAGE_TITLE",
+        title,
+      })
+
+      document.title = `${title} · Streamlit`
+    }
+
+    if (favicon) {
+      handleFavicon(favicon)
+    }
+
+    // Only change layout/sidebar when the page config has changed.
+    // This preserves the user's previous choice, and prevents extra re-renders.
+    if (layout !== this.state.layout) {
+      this.setState((prevState: State) => ({
+        layout,
+        userSettings: {
+          ...prevState.userSettings,
+          wideMode: layout === PageConfig.Layout.WIDE,
+        },
+      }))
+    }
+    if (initialSidebarState !== this.state.initialSidebarState) {
+      this.setState(() => ({
+        initialSidebarState,
+      }))
+    }
+  }
+
   handlePageInfoChanged = (pageInfo: PageInfo): void => {
     const { queryString } = pageInfo
     window.history.pushState({}, "", queryString ? `?${queryString}` : "/")
-  }
 
-  /**
-   * Handler for ForwardMsg.initialize messages
-   * @param initializeMsg an Initialize protobuf
-   */
-  handleInitialize = (initializeMsg: Initialize): void => {
-    const {
-      sessionId,
-      environmentInfo,
-      userInfo,
-      config,
-      sessionState,
-    } = initializeMsg
-
-    if (
-      sessionId == null ||
-      !environmentInfo ||
-      !userInfo ||
-      !config ||
-      !sessionState
-    ) {
-      throw new Error("InitializeMsg is missing a required field")
-    }
-
-    if (App.hasStreamlitVersionChanged(initializeMsg)) {
-      window.location.reload()
-      return
-    }
-
-    SessionInfo.current = new SessionInfo({
-      sessionId,
-      streamlitVersion: environmentInfo.streamlitVersion,
-      pythonVersion: environmentInfo.pythonVersion,
-      installationId: userInfo.installationId,
-      authorEmail: userInfo.email,
-      maxCachedMessageAge: config.maxCachedMessageAge,
-      commandLine: initializeMsg.commandLine,
-      userMapboxToken: config.mapboxToken,
+    this.props.s4aCommunication.sendMessage({
+      type: "SET_QUERY_PARAM",
+      queryParams: queryString ? `?${queryString}` : "",
     })
-
-    MetricsManager.current.initialize({
-      gatherUsageStats: Boolean(config.gatherUsageStats),
-    })
-
-    MetricsManager.current.enqueue("createReport", {
-      pythonVersion: SessionInfo.current.pythonVersion,
-    })
-
-    this.setState({
-      sharingEnabled: Boolean(config.sharingEnabled),
-    })
-
-    this.handleSessionStateChanged(sessionState)
   }
 
   /**
    * Handler for ForwardMsg.sessionStateChanged messages
    * @param stateChangeProto a SessionState protobuf
    */
-  handleSessionStateChanged = (stateChangeProto: ISessionState): void => {
+  handleSessionStateChanged = (stateChangeProto: SessionState): void => {
     this.setState((prevState: State) => {
       // Determine our new ReportRunState
       let { reportRunState } = prevState
@@ -445,25 +466,51 @@ export class App extends PureComponent<Props, State> {
         type: DialogType.SCRIPT_CHANGED,
         onRerun: this.rerunScript,
         onClose: () => {},
+        allowRunOnSave: this.state.allowRunOnSave,
       }
       this.openDialog(newDialog)
     }
   }
 
   /**
-   * Handler for ForwardMsg.newReport messages
+   * Handler for ForwardMsg.newReport messages. This runs on each rerun
    * @param newReportProto a NewReport protobuf
    */
   handleNewReport = (newReportProto: NewReport): void => {
+    const initialize = newReportProto.initialize as Initialize
+
+    if (App.hasStreamlitVersionChanged(initialize)) {
+      window.location.reload()
+      return
+    }
+
+    // First, handle initialization logic. Each NewReport message has
+    // initialization data. If this is the _first_ time we're receiving
+    // the NewReport message, we perform some one-time initialization.
+    if (!SessionInfo.isSet()) {
+      // We're not initialized. Perform one-time initialization.
+      this.handleOneTimeInitialization(initialize)
+    }
+
     const { reportHash } = this.state
-    const { id: reportId, name: reportName, scriptPath } = newReportProto
+    const {
+      reportId,
+      name: reportName,
+      scriptPath,
+      deployParams,
+    } = newReportProto
 
     const newReportHash = hashString(
       SessionInfo.current.installationId + scriptPath
     )
 
+    // Set the title and favicon to their default values
     document.title = `${reportName} · Streamlit`
+    handleFavicon(`${process.env.PUBLIC_URL}/favicon.png`)
 
+    MetricsManager.current.setMetadata(
+      this.props.s4aCommunication.currentState.streamlitShareMetadata
+    )
     MetricsManager.current.setReportHash(newReportHash)
     MetricsManager.current.clearDeltaCounter()
 
@@ -472,10 +519,35 @@ export class App extends PureComponent<Props, State> {
     if (reportHash === newReportHash) {
       this.setState({
         reportId,
+        deployParams,
       })
     } else {
-      this.clearAppState(newReportHash, reportId, reportName)
+      this.clearAppState(newReportHash, reportId, reportName, deployParams)
     }
+  }
+
+  /**
+   * Performs one-time initialization. This is called from `handleNewReport`.
+   */
+  handleOneTimeInitialization = (initialize: Initialize): void => {
+    SessionInfo.current = SessionInfo.fromInitializeMessage(initialize)
+    const config = initialize.config as Config
+
+    MetricsManager.current.initialize({
+      gatherUsageStats: config.gatherUsageStats,
+    })
+
+    MetricsManager.current.enqueue("createReport", {
+      pythonVersion: SessionInfo.current.pythonVersion,
+    })
+
+    this.setState({
+      sharingEnabled: config.sharingEnabled,
+      allowRunOnSave: config.allowRunOnSave,
+    })
+
+    this.props.s4aCommunication.connect()
+    this.handleSessionStateChanged(initialize.sessionState)
   }
 
   /**
@@ -488,29 +560,24 @@ export class App extends PureComponent<Props, State> {
       // (We don't do this if our script had a compilation error and didn't
       // finish successfully.)
       this.setState(
-        ({ elements, reportId }) => ({
-          elements: {
-            main: this.clearOldElements(elements.main, reportId),
-            sidebar: this.clearOldElements(elements.sidebar, reportId),
-          },
+        ({ reportId }) => ({
+          // Apply any pending elements that haven't been applied.
+          elements: this.pendingElementsBuffer.clearStaleNodes(reportId),
         }),
         () => {
-          this.elementListBuffer = this.state.elements
+          // We now have no pending elements.
+          this.pendingElementsBuffer = this.state.elements
         }
       )
 
-      // This step removes from the WidgetManager the state of those widgets
-      // that are not shown on the page.
-      if (this.elementListBuffer) {
-        const activeWidgetIds = flattenElements(this.elementListBuffer.main)
-          .union(flattenElements(this.elementListBuffer.sidebar))
-          .map((e: SimpleElement) => {
-            const type = e.get("type")
-            return e.get(type).get("id") as string
-          })
-          .filter(id => id != null)
-        this.widgetMgr.clean(activeWidgetIds)
-      }
+      // Tell the WidgetManager which widgets still exist. It will remove
+      // widget state for widgets that have been removed.
+      const activeWidgetIds = new Set(
+        Array.from(this.state.elements.getElements())
+          .map(element => getElementWidgetID(element))
+          .filter(notUndefined)
+      )
+      this.widgetMgr.clean(activeWidgetIds)
 
       // Tell the ConnectionManager to increment the message cache run
       // count. This will result in expired ForwardMsgs being removed from
@@ -523,51 +590,25 @@ export class App extends PureComponent<Props, State> {
     }
   }
 
-  /**
-   * Removes old elements. The term old is defined as:
-   *  - simple elements whose reportIds are no longer current
-   *  - empty block elements
-   */
-  clearOldElements = (elements: any, reportId: string): BlockElement => {
-    return elements
-      .map((reportElement: ReportElement) => {
-        const simpleElement = reportElement.get("element")
-
-        if (simpleElement instanceof List) {
-          const clearedElements = this.clearOldElements(
-            simpleElement,
-            reportId
-          )
-          return clearedElements.size > 0 ? clearedElements : null
-        }
-
-        return reportElement.get("reportId") === reportId
-          ? reportElement
-          : null
-      })
-      .filter((reportElement: any) => reportElement !== null)
-  }
-
   /*
    * Clear all elements from the state.
    */
   clearAppState(
     reportHash: string,
     reportId: string,
-    reportName: string
+    reportName: string,
+    deployParams?: IDeployParams | null
   ): void {
     this.setState(
       {
         reportId,
         reportName,
         reportHash,
-        elements: {
-          main: fromJS([]),
-          sidebar: fromJS([]),
-        },
+        deployParams,
+        elements: ReportRoot.empty(),
       },
       () => {
-        this.elementListBuffer = this.state.elements
+        this.pendingElementsBuffer = this.state.elements
         this.widgetMgr.clean(fromJS([]))
       }
     )
@@ -584,14 +625,6 @@ export class App extends PureComponent<Props, State> {
    * Closes the upload dialog if it's open.
    */
   closeDialog = (): void => {
-    // HACK: Remove modal-open class that Bootstrap uses to hide scrollbars
-    // when a modal is open. Otherwise, when the user causes a syntax error in
-    // Python and we show an "Error" modal, and then the user presses "R" while
-    // that modal is showing, this causes "modal-open" to *not* be removed
-    // properly from <body>, thereby breaking scrolling. This seems to be
-    // related to the modal-close animation taking too long.
-    document.body.classList.remove("modal-open")
-
     this.setState({ dialog: undefined })
   }
 
@@ -612,24 +645,22 @@ export class App extends PureComponent<Props, State> {
   }
 
   /**
-   * Updates elementListBuffer with the given delta, and sets up a timer to
-   * update the elementList in the state as well. This buffer allows us to
-   * receive deltas extremely quickly without spamming React with lots of
-   * render() calls.
+   * Update pendingElementsBuffer with the given Delta and set up a timer to
+   * update state.elements. This buffer allows us to process Deltas quickly
+   * without spamming React with too many of render() calls.
    */
   handleDeltaMsg = (
     deltaMsg: Delta,
-    metadataMsg: IForwardMsgMetadata | undefined | null
+    metadataMsg: ForwardMsgMetadata
   ): void => {
-    this.elementListBuffer = applyDelta(
-      this.state.elements,
+    this.pendingElementsBuffer = this.pendingElementsBuffer.applyDelta(
       this.state.reportId,
       deltaMsg,
       metadataMsg
     )
 
-    if (!this.elementListBufferTimerIsSet) {
-      this.elementListBufferTimerIsSet = true
+    if (!this.pendingElementsTimerRunning) {
+      this.pendingElementsTimerRunning = true
 
       // (BUG #685) When user presses stop, stop adding elements to
       // report immediately to avoid race condition.
@@ -642,16 +673,9 @@ export class App extends PureComponent<Props, State> {
         this.state.reportRunState === ReportRunState.RUNNING
 
       setTimeout(() => {
-        this.elementListBufferTimerIsSet = false
+        this.pendingElementsTimerRunning = false
         if (isStaticConnection || reportIsRunning) {
-          // Create brand new `elements` instance, so components that depend on
-          // this for re-rendering catch the change.
-          if (this.elementListBuffer) {
-            const elements: Elements = {
-              ...this.elementListBuffer,
-            }
-            this.setState({ elements })
-          }
+          this.setState({ elements: this.pendingElementsBuffer })
         }
       }, ELEMENT_LIST_BUFFER_TIMEOUT_MS)
     }
@@ -740,17 +764,23 @@ export class App extends PureComponent<Props, State> {
     this.widgetMgr.sendUpdateWidgetsMessage()
   }
 
-  sendRerunBackMsg = (widgetStates?: WidgetStates): void => {
-    let queryString = document.location.search
+  sendRerunBackMsg = (widgetStates?: WidgetStates | undefined): void => {
+    const { queryParams } = this.props.s4aCommunication.currentState
+
+    let queryString =
+      queryParams && queryParams.length > 0
+        ? queryParams
+        : document.location.search
 
     if (queryString.startsWith("?")) {
       queryString = queryString.substring(1)
     }
 
-    const backMsg = new BackMsg({
-      rerunScript: { queryString, widgetStates },
-    })
-    this.sendBackMsg(backMsg)
+    this.sendBackMsg(
+      new BackMsg({
+        rerunScript: { queryString, widgetStates },
+      })
+    )
   }
 
   /** Requests that the server stop running the report */
@@ -840,6 +870,7 @@ export class App extends PureComponent<Props, State> {
       type: DialogType.SETTINGS,
       isServerConnected: this.isServerConnected(),
       settings: this.state.userSettings,
+      allowRunOnSave: this.state.allowRunOnSave,
       onSave: this.saveSettings,
       onClose: () => {},
     }
@@ -862,43 +893,73 @@ export class App extends PureComponent<Props, State> {
     startRecording(`streamlit-${reportName}-${date}`)
   }
 
+  handleFullScreen = (isFullScreen: boolean): void => {
+    this.setState({ isFullScreen })
+  }
+
   render(): JSX.Element {
+    const {
+      allowRunOnSave,
+      connectionState,
+      deployParams,
+      dialog,
+      elements,
+      initialSidebarState,
+      isFullScreen,
+      layout,
+      reportId,
+      reportRunState,
+      sharingEnabled,
+      userSettings,
+    } = this.state
     const outerDivClass = classNames("stApp", {
       "streamlit-embedded": isEmbeddedInIFrame(),
-      "streamlit-wide": this.state.userSettings.wideMode,
+      "streamlit-wide": userSettings.wideMode,
     })
 
-    let dialog: React.ReactNode = null
-    if (this.state.dialog) {
-      const dialogProps: DialogProps = {
-        ...this.state.dialog,
-        onClose: this.closeDialog,
-      }
-      dialog = StreamlitDialog(dialogProps)
-    }
+    const renderedDialog: React.ReactNode = dialog
+      ? StreamlitDialog({
+          ...dialog,
+          onClose: this.closeDialog,
+        })
+      : null
 
     // Attach and focused props provide a way to handle Global Hot Keys
     // https://github.com/greena13/react-hotkeys/issues/41
     // attach: DOM element the keyboard listeners should attach to
     // focused: A way to force focus behaviour
     return (
-      <HotKeys handlers={this.keyHandlers} attach={window} focused={true}>
-        <div className={outerDivClass}>
-          {/* The tabindex below is required for testing. */}
-          <header tabIndex={-1}>
-            <div className="decoration" />
-            <div className="toolbar">
+      <PageLayoutContext.Provider
+        value={{
+          initialSidebarState,
+          layout,
+          wideMode: userSettings.wideMode,
+          embedded: isEmbeddedInIFrame(),
+          isFullScreen,
+          setFullScreen: this.handleFullScreen,
+        }}
+      >
+        <HotKeys
+          keyMap={this.keyMap}
+          handlers={this.keyHandlers}
+          attach={window}
+          focused={true}
+        >
+          <StyledApp className={outerDivClass}>
+            {/* The tabindex below is required for testing. */}
+            <Header>
               <StatusWidget
                 ref={this.statusWidgetRef}
-                connectionState={this.state.connectionState}
+                connectionState={connectionState}
                 sessionEventDispatcher={this.sessionEventDispatcher}
-                reportRunState={this.state.reportRunState}
+                reportRunState={reportRunState}
                 rerunReport={this.rerunScript}
                 stopReport={this.stopReport}
+                allowRunOnSave={allowRunOnSave}
               />
               <MainMenu
-                sharingEnabled={this.state.sharingEnabled === true}
-                isServerConnected={this.isServerConnected}
+                sharingEnabled={sharingEnabled === true}
+                isServerConnected={this.isServerConnected()}
                 shareCallback={this.shareReport}
                 quickRerunCallback={this.rerunScript}
                 clearCacheCallback={this.openClearCacheDialog}
@@ -906,31 +967,30 @@ export class App extends PureComponent<Props, State> {
                 aboutCallback={this.aboutCallback}
                 screencastCallback={this.screencastCallback}
                 screenCastState={this.props.screenCast.currentState}
+                s4aMenuItems={this.props.s4aCommunication.currentState.items}
+                sendS4AMessage={this.props.s4aCommunication.sendMessage}
+                deployParams={deployParams}
               />
-            </div>
-          </header>
+            </Header>
 
-          <ReportView
-            wide={this.state.userSettings.wideMode}
-            elements={this.state.elements}
-            reportId={this.state.reportId}
-            reportRunState={this.state.reportRunState}
-            showStaleElementIndicator={
-              this.state.connectionState !== ConnectionState.STATIC
-            }
-            widgetMgr={this.widgetMgr}
-            widgetsDisabled={
-              this.state.connectionState !== ConnectionState.CONNECTED
-            }
-            uploadClient={this.uploadClient}
-            componentRegistry={this.componentRegistry}
-          />
-
-          {dialog}
-        </div>
-      </HotKeys>
+            <ReportView
+              elements={elements}
+              reportId={reportId}
+              reportRunState={reportRunState}
+              showStaleElementIndicator={
+                connectionState !== ConnectionState.STATIC
+              }
+              widgetMgr={this.widgetMgr}
+              widgetsDisabled={connectionState !== ConnectionState.CONNECTED}
+              uploadClient={this.uploadClient}
+              componentRegistry={this.componentRegistry}
+            />
+            {renderedDialog}
+          </StyledApp>
+        </HotKeys>
+      </PageLayoutContext.Provider>
     )
   }
 }
 
-export default withScreencast(App)
+export default withS4ACommunication(withScreencast(App))

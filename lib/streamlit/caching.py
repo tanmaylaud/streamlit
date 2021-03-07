@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import math
 import os
 import pickle
 import shutil
-import struct
 import textwrap
 import threading
 import time
@@ -35,8 +34,8 @@ from cachetools import TTLCache
 from streamlit import config
 from streamlit import file_util
 from streamlit import util
+from streamlit.error_util import handle_uncaught_app_exception
 from streamlit.errors import StreamlitAPIWarning
-from streamlit.errors import StreamlitDeprecationWarning
 from streamlit.hashing import Context
 from streamlit.hashing import update_hash
 from streamlit.hashing import HashReason
@@ -323,7 +322,7 @@ def _read_from_cache(
         )
 
     except CachedObjectMutationError as e:
-        st.exception(CachedObjectMutationWarning(e))
+        handle_uncaught_app_exception(CachedObjectMutationWarning(e))
         return e.cached_value
 
     except CacheKeyNotFoundError as e:
@@ -408,7 +407,7 @@ def cache(
     >>> # encountered.
     >>>
     >>> d2 = fetch_and_clean_data(DATA_URL_1)
-    >>> # Does not execute the function. Just returns its previously computed
+    >>> # Does not execute the function. Instead, returns its previously computed
     >>> # value. This means that now the data in d1 is the same as in d2.
     >>>
     >>> d3 = fetch_and_clean_data(DATA_URL_2)
@@ -480,12 +479,25 @@ def cache(
 
     func_hasher = hashlib.new("md5")
 
-    # Include the function's module and qualified name in the hash.
+    # Include the function's __module__ and __qualname__ strings in the hash.
     # This means that two identical functions in different modules
     # will not share a hash; it also means that two identical *nested*
     # functions in the same module will not share a hash.
+    # We do not pass `hash_funcs` here, because we don't want our function's
+    # name to get an unexpected hash.
     update_hash(
-        (func.__module__, func.__qualname__, func),
+        (func.__module__, func.__qualname__),
+        hasher=func_hasher,
+        hash_funcs=None,
+        hash_reason=HashReason.CACHING_FUNC_BODY,
+        hash_source=func,
+    )
+
+    # Include the function's body in the hash. We *do* pass hash_funcs here,
+    # because this step will be hashing any objects referenced in the function
+    # body.
+    update_hash(
+        func,
         hasher=func_hasher,
         hash_funcs=hash_funcs,
         hash_reason=HashReason.CACHING_FUNC_BODY,
@@ -845,10 +857,10 @@ How to fix this:
   - Otherwise, you could also clone the returned value so you can freely
     mutate it.
 * If you actually meant to mutate the return value and know the consequences of
-doing so, just annotate the function with `@st.cache(allow_output_mutation=True)`.
+doing so, annotate the function with `@st.cache(allow_output_mutation=True)`.
 
 For more information and detailed solutions check out [our documentation.]
-(https://docs.streamlit.io/en/latest/advanced_caching.html)
+(https://docs.streamlit.io/en/latest/caching.html)
             """
             % {"func_name": orig_exc.cached_func_name}
         ).strip("\n")

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,18 @@
 
 import React from "react"
 import without from "lodash/without"
-import { Map as ImmutableMap } from "immutable"
-import { multiSelectOverrides } from "lib/widgetTheme"
+import { withTheme } from "emotion-theming"
 import { WidgetStateManager, Source } from "lib/WidgetStateManager"
+import { MultiSelect as MultiSelectProto } from "autogen/proto"
 import { TYPE, Select as UISelect, OnChangeParams } from "baseui/select"
+import { VirtualDropdown } from "components/shared/Dropdown"
+import { StyledWidgetLabel } from "components/widgets/BaseWidget"
+import { Theme } from "theme"
 
 export interface Props {
   disabled: boolean
-  element: ImmutableMap<string, any>
+  element: MultiSelectProto
+  theme: Theme
   widgetMgr: WidgetStateManager
   width: number
 }
@@ -43,7 +47,15 @@ interface MultiselectOption {
 
 class Multiselect extends React.PureComponent<Props, State> {
   public state: State = {
-    value: this.props.element.get("default").toArray(),
+    value: this.initialValue,
+  }
+
+  get initialValue(): number[] {
+    // If WidgetStateManager knew a value for this widget, initialize to that.
+    // Otherwise, use the default value from the widget protobuf.
+    const widgetId = this.props.element.id
+    const storedValue = this.props.widgetMgr.getIntArrayValue(widgetId)
+    return storedValue !== undefined ? storedValue : this.props.element.default
   }
 
   public componentDidMount(): void {
@@ -51,13 +63,13 @@ class Multiselect extends React.PureComponent<Props, State> {
   }
 
   private setWidgetValue = (source: Source): void => {
-    const widgetId: string = this.props.element.get("id")
+    const widgetId = this.props.element.id
     this.props.widgetMgr.setIntArrayValue(widgetId, this.state.value, source)
   }
 
   private get valueFromState(): MultiselectOption[] {
     return this.state.value.map(i => {
-      const label = this.props.element.get("options").get(i)
+      const label = this.props.element.options[i]
       return { value: i.toString(), label }
     })
   }
@@ -90,25 +102,24 @@ class Multiselect extends React.PureComponent<Props, State> {
   }
 
   public render(): React.ReactNode {
-    const { element, width } = this.props
+    const { element, theme, width } = this.props
     const style = { width }
-    const label = element.get("label")
-    const options = element.get("options")
-    const disabled = options.size === 0 ? true : this.props.disabled
+    const { options } = element
+    const disabled = options.length === 0 ? true : this.props.disabled
     const placeholder =
-      options.size === 0 ? "No options to select." : "Choose an option"
-    const selectOptions: MultiselectOption[] = options
-      .map((option: string, idx: number) => {
+      options.length === 0 ? "No options to select." : "Choose an option"
+    const selectOptions: MultiselectOption[] = options.map(
+      (option: string, idx: number) => {
         return {
           label: option,
           value: idx.toString(),
         }
-      })
-      .toArray()
+      }
+    )
 
     return (
-      <div className="Widget row-widget stMultiSelect" style={style}>
-        <label>{label}</label>
+      <div className="row-widget stMultiSelect" style={style}>
+        <StyledWidgetLabel>{element.label}</StyledWidgetLabel>
         <UISelect
           options={selectOptions}
           labelKey="label"
@@ -120,11 +131,69 @@ class Multiselect extends React.PureComponent<Props, State> {
           value={this.valueFromState}
           disabled={disabled}
           size={"compact"}
-          overrides={multiSelectOverrides}
+          overrides={{
+            ValueContainer: {
+              style: () => ({
+                /*
+                  This minHeight is needed to fix a bug from BaseWeb in which the
+                  div that contains the options changes their height from 40px to 44px.
+
+                  You could check this behavior in their documentation as well:
+                  https://v8-17-1.baseweb.design/components/select/#select-as-multi-pick-search
+
+                  Issue related: https://github.com/streamlit/streamlit/issues/590
+                 */
+                minHeight: "44px",
+              }),
+            },
+            ClearIcon: {
+              style: {
+                color: theme.colors.darkGray,
+              },
+            },
+            SearchIcon: {
+              style: {
+                color: theme.colors.darkGray,
+              },
+            },
+            Tag: {
+              props: {
+                overrides: {
+                  Root: {
+                    style: {
+                      borderTopLeftRadius: theme.radii.md,
+                      borderTopRightRadius: theme.radii.md,
+                      borderBottomRightRadius: theme.radii.md,
+                      borderBottomLeftRadius: theme.radii.md,
+                      fontSize: theme.fontSizes.sm,
+                      paddingLeft: theme.spacing.md,
+                    },
+                  },
+                  Action: {
+                    style: {
+                      paddingLeft: theme.spacing.sm,
+                    },
+                  },
+                },
+              },
+            },
+            MultiValue: {
+              props: {
+                overrides: {
+                  Root: {
+                    style: {
+                      fontSize: theme.fontSizes.sm,
+                    },
+                  },
+                },
+              },
+            },
+            Dropdown: { component: VirtualDropdown },
+          }}
         />
       </div>
     )
   }
 }
 
-export default Multiselect
+export default withTheme(Multiselect)

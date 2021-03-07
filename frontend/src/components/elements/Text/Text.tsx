@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,32 +15,24 @@
  * limitations under the License.
  */
 
-import React, { ReactNode } from "react"
-import classNames from "classnames"
-import { Map as ImmutableMap } from "immutable"
+import React, { ReactElement } from "react"
+import { Text as TextProto } from "autogen/proto"
+import { StyledText } from "./styled-components"
 
-import "assets/css/write.scss"
-
-export interface Props {
+export interface TextProps {
   width: number
-  element: ImmutableMap<string, any>
+  element: TextProto
 }
 
 /**
  * Functional element representing preformatted (plain) text.
  */
-class Text extends React.PureComponent<Props> {
-  public render(): ReactNode {
-    const { element, width } = this.props
-    const body = element.get("body")
-    const styleProp = { width }
+export default function Text({ width, element }: TextProps): ReactElement {
+  const styleProp = { width }
 
-    return (
-      <div className={classNames("fixed-width", "stText")} style={styleProp}>
-        {body}
-      </div>
-    )
-  }
+  return (
+    <StyledText data-testid="stText" style={styleProp}>
+      {element.body}
+    </StyledText>
+  )
 }
-
-export default Text

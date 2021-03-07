@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import withFullScreenWrapper from "hocs/withFullScreenWrapper"
 import { tableGetRowsAndCols, indexGet, tableGet } from "lib/dataFrameProto"
 import embed from "vega-embed"
 import * as vega from "vega"
-import "./VegaLiteChart.scss"
+import { StyledVegaLiteChartContainer } from "./styled-components"
 
 const MagicFields = {
   DATAFRAME_INDEX: "(index)",
@@ -310,8 +310,8 @@ export class VegaLiteChart extends PureComponent<PropsWithHeight, State> {
 
     return (
       // Create the container Vega draws inside.
-      <div
-        className="stVegaLiteChart"
+      <StyledVegaLiteChartContainer
+        data-testid="stVegaLiteChart"
         ref={c => {
           this.element = c
         }}

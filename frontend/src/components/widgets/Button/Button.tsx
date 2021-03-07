@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,41 +15,39 @@
  * limitations under the License.
  */
 
-import React from "react"
-import { Button as UIButton } from "baseui/button"
-import { Map as ImmutableMap } from "immutable"
+import React, { ReactElement } from "react"
+import UIButton, { Kind, Size } from "components/shared/Button"
+import { Button as ButtonProto } from "autogen/proto"
 import { WidgetStateManager } from "lib/WidgetStateManager"
-import { buttonOverrides } from "lib/widgetTheme"
 
-export interface Props {
+export interface ButtonProps {
   disabled: boolean
-  element: ImmutableMap<string, any>
+  element: ButtonProto
   widgetMgr: WidgetStateManager
   width: number
 }
 
-class Button extends React.PureComponent<Props> {
-  private handleClick = (): void => {
-    const widgetId = this.props.element.get("id")
-    this.props.widgetMgr.setTriggerValue(widgetId, { fromUi: true })
+function Button(props: ButtonProps): ReactElement {
+  const { disabled, element, widgetMgr, width } = props
+  const style = { width }
+
+  const handleClick = (): void => {
+    const widgetId = element.id
+    widgetMgr.setTriggerValue(widgetId, { fromUi: true })
   }
 
-  public render(): React.ReactNode {
-    const label = this.props.element.get("label")
-    const style = { width: this.props.width }
-
-    return (
-      <div className="Widget row-widget stButton" style={style}>
-        <UIButton
-          disabled={this.props.disabled}
-          onClick={this.handleClick}
-          overrides={buttonOverrides}
-        >
-          {label}
-        </UIButton>
-      </div>
-    )
-  }
+  return (
+    <div className="row-widget stButton" style={style}>
+      <UIButton
+        kind={Kind.PRIMARY}
+        size={Size.SMALL}
+        disabled={disabled}
+        onClick={handleClick}
+      >
+        {element.label}
+      </UIButton>
+    </div>
+  )
 }
 
 export default Button

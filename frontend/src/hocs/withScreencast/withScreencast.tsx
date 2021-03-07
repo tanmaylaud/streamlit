@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -141,7 +141,6 @@ function withScreencast(
         this.recorder.getState() !== "inactive"
       ) {
         outputBlob = await this.recorder.stop()
-
         this.setState({
           outputBlob,
           currentState: "PREVIEW_FILE",
@@ -210,7 +209,10 @@ function withScreencast(
 
       return (
         <div className="withScreencast">
-          <WrappedComponent screenCast={this.getScreenCastProps()} />
+          <WrappedComponent
+            screenCast={this.getScreenCastProps()}
+            {...this.props}
+          />
 
           {currentState === "UNSUPPORTED" && (
             <UnsupportedBrowserDialog onClose={this.closeDialog} />

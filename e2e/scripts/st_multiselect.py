@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,3 +26,14 @@ st.text("value 3: %s" % i3)
 
 i4 = st.multiselect("selectbox 4", ["coffee", "tea", "water"], ["tea", "water"])
 st.text("value 4: %s" % i4)
+
+i5 = st.multiselect(
+    "selectbox 5",
+    list(
+        map(
+            lambda x: f"{x} I am a ridiculously long string to have in a multiselect, so perhaps I should just not wrap and go to the next line.",
+            range(5),
+        )
+    ),
+)
+st.text("value 5: %s" % i5)

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,12 @@
  */
 
 import React, { PureComponent, ReactNode } from "react"
-import { Modal, ModalBody, ModalHeader } from "reactstrap"
+import Modal, { ModalHeader, ModalBody } from "components/shared/Modal"
+import {
+  StyledScreenCastWarningDialog,
+  StyledUnsupportedScreenCastExplanation,
+  StyledUnsupportedScreenCastIcon,
+} from "./styled-components"
 
 export interface Props {
   /** Callback to close the dialog */
@@ -28,19 +33,21 @@ class UnsupportedBrowserDialog extends PureComponent<Props> {
     const { onClose } = this.props
 
     return (
-      <Modal isOpen={true} toggle={onClose} className="streamlit-dialog">
-        <ModalHeader toggle={onClose}>Record a screencast</ModalHeader>
+      <Modal isOpen onClose={onClose}>
+        <ModalHeader>Record a screencast</ModalHeader>
         <ModalBody>
-          <div className="screenCastWarningDialog">
-            <span role="img" aria-label="Alien Monster">
-              👾
-            </span>
-            <p>
+          <StyledScreenCastWarningDialog>
+            <StyledUnsupportedScreenCastIcon>
+              <span role="img" aria-label="Alien Monster">
+                👾
+              </span>
+            </StyledUnsupportedScreenCastIcon>
+            <StyledUnsupportedScreenCastExplanation>
               Due to limitations with some browsers, this feature is only
               supported on recent desktop versions of Chrome, Firefox, and
               Edge.
-            </p>
-          </div>
+            </StyledUnsupportedScreenCastExplanation>
+          </StyledScreenCastWarningDialog>
         </ModalBody>
       </Modal>
     )

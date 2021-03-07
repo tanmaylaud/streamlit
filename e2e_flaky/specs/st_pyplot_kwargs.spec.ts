@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,13 +27,15 @@ describe("st.pyplot with kwargs", () => {
     });
 
     // Make the ribbon decoration line disappear
-    cy.get(".decoration").invoke("css", "display", "none");
+    cy.get("[data-testid='stDecoration']").invoke("css", "display", "none");
   });
 
   it("draws long text strings correctly", () => {
-    cy.get(".stImage")
+    cy.get("[data-testid='stImage']")
       .find("img")
       .should("have.attr", "src");
-    cy.get(".stImage > img").matchImageSnapshot("pyplot-long-text-strings");
+    cy.get("[data-testid='stImage'] > img").matchImageSnapshot(
+      "pyplot-long-text-strings"
+    );
   });
 });

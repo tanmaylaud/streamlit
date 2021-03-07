@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,26 @@
  */
 
 import React from "react"
+import { Plus, Minus } from "@emotion-icons/open-iconic"
 import { sprintf } from "sprintf-js"
 import { logWarning } from "lib/log"
-import { Map as ImmutableMap } from "immutable"
 import { NumberInput as NumberInputProto } from "autogen/proto"
 import { WidgetStateManager, Source } from "lib/WidgetStateManager"
 
 import Icon from "components/shared/Icon"
 import { Input as UIInput } from "baseui/input"
 import InputInstructions from "components/shared/InputInstructions/InputInstructions"
-
-import "./NumberInput.scss"
+import { StyledWidgetLabel } from "components/widgets/BaseWidget"
+import {
+  StyledInputContainer,
+  StyledInputControl,
+  StyledInputControls,
+  StyledInstructionsContainer,
+} from "./styled-components"
 
 export interface Props {
   disabled: boolean
-  element: ImmutableMap<string, any>
+  element: NumberInputProto
   widgetMgr: WidgetStateManager
   width: number
 }
@@ -59,13 +64,19 @@ class NumberInput extends React.PureComponent<Props, State> {
   constructor(props: Props) {
     super(props)
 
-    const defaultValue = this.props.element.get("default")
-
     this.state = {
       dirty: false,
-      value: defaultValue,
-      formattedValue: this.formatValue(defaultValue),
+      value: this.initialValue,
+      formattedValue: this.formatValue(this.initialValue),
     }
+  }
+
+  get initialValue(): number {
+    // If WidgetStateManager knew a value for this widget, initialize to that.
+    // Otherwise, use the default value from the widget protobuf
+    const widgetId = this.props.element.id
+    const storedValue = this.props.widgetMgr.getIntValue(widgetId)
+    return storedValue !== undefined ? storedValue : this.props.element.default
   }
 
   public componentDidMount(): void {
@@ -73,9 +84,9 @@ class NumberInput extends React.PureComponent<Props, State> {
   }
 
   private formatValue = (value: number): string => {
-    const format: string = this.props.element.get("format")
+    const format = getNonEmptyString(this.props.element.format)
     if (format == null) {
-      return String(value)
+      return value.toString()
     }
 
     try {
@@ -88,23 +99,19 @@ class NumberInput extends React.PureComponent<Props, State> {
   }
 
   private isIntData = (): boolean => {
-    return this.props.element.get("dataType") === NumberInputProto.DataType.INT
+    return this.props.element.dataType === NumberInputProto.DataType.INT
   }
 
   private getMin = (): number => {
-    return this.props.element.get("hasMin")
-      ? this.props.element.get("min")
-      : -Infinity
+    return this.props.element.hasMin ? this.props.element.min : -Infinity
   }
 
   private getMax = (): number => {
-    return this.props.element.get("hasMax")
-      ? this.props.element.get("max")
-      : +Infinity
+    return this.props.element.hasMax ? this.props.element.max : +Infinity
   }
 
   private getStep = (): number => {
-    const step = this.props.element.get("step")
+    const { step } = this.props.element
 
     if (step) {
       return step
@@ -120,9 +127,9 @@ class NumberInput extends React.PureComponent<Props, State> {
     const { element, widgetMgr } = this.props
     const data = this.props.element
 
-    const widgetId: string = element.get("id")
-    const min: number = this.getMin()
-    const max: number = this.getMax()
+    const widgetId = element.id
+    const min = this.getMin()
+    const max = this.getMax()
 
     if (min > value || value > max) {
       const node = this.inputRef.current
@@ -130,12 +137,12 @@ class NumberInput extends React.PureComponent<Props, State> {
         node.reportValidity()
       }
     } else {
-      const valueToBeSaved = value || value === 0 ? value : data.get("default")
+      const valueToBeSaved = value || value === 0 ? value : data.default
 
       if (this.isIntData()) {
         widgetMgr.setIntValue(widgetId, valueToBeSaved, source)
       } else {
-        widgetMgr.setFloatValue(widgetId, valueToBeSaved, source)
+        widgetMgr.setDoubleValue(widgetId, valueToBeSaved, source)
       }
 
       this.setState({
@@ -237,13 +244,12 @@ class NumberInput extends React.PureComponent<Props, State> {
     const { element, width, disabled } = this.props
     const { formattedValue, dirty } = this.state
 
-    const label: string = element.get("label")
     const style = { width }
 
     return (
-      <div className="Widget row-widget stNumberInput" style={style}>
-        <label>{label}</label>
-        <div className="input-container">
+      <div className="stNumberInput" style={style}>
+        <StyledWidgetLabel>{element.label}</StyledWidgetLabel>
+        <StyledInputContainer>
           <UIInput
             type="number"
             inputRef={this.inputRef}
@@ -267,31 +273,49 @@ class NumberInput extends React.PureComponent<Props, State> {
                   borderBottomRightRadius: 0,
                 }),
               },
+              Root: {
+                style: () => ({
+                  borderTopRightRadius: 0,
+                  borderBottomRightRadius: 0,
+                }),
+              },
             }}
           />
-          <div className="controls">
-            <button
-              className="control step-down"
+          <StyledInputControls>
+            <StyledInputControl
+              className="step-down"
               onClick={this.modifyValueUsingStep("decrement")}
             >
-              <Icon type="minus" />
-            </button>
-            <button
-              className="control step-up"
+              <Icon content={Minus} size="xs" />
+            </StyledInputControl>
+            <StyledInputControl
+              className="step-up"
               onClick={this.modifyValueUsingStep("increment")}
             >
-              <Icon type="plus" />
-            </button>
-          </div>
-        </div>
-        <InputInstructions
-          dirty={dirty}
-          value={formattedValue}
-          className="input-instructions"
-        />
+              <Icon content={Plus} size="xs" />
+            </StyledInputControl>
+          </StyledInputControls>
+        </StyledInputContainer>
+        <StyledInstructionsContainer>
+          <InputInstructions
+            dirty={dirty}
+            value={formattedValue}
+            className="input-instructions"
+          />
+        </StyledInstructionsContainer>
       </div>
     )
   }
+}
+
+/**
+ * Return a string property from an element. If the string is
+ * null or empty, return undefined instead.
+ */
+function getNonEmptyString(
+  value: string | null | undefined
+): string | undefined {
+  return value == null || value === "" ? undefined : value
 }
 
 export default NumberInput

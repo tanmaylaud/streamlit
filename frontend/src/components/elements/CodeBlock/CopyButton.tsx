@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2018-2020 Streamlit Inc.
+ * Copyright 2018-2021 Streamlit Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 import Clipboard from "clipboard"
 import React, { PureComponent, ReactNode, createRef } from "react"
 import { Copy as CopyIcon } from "react-feather"
+import { StyledCopyButton } from "./styled-components"
 
 interface Props {
   text: string
@@ -43,14 +44,17 @@ class CopyButton extends PureComponent<Props> {
   }
 
   public render = (): ReactNode => (
-    <button
-      className="overlayBtn"
+    <StyledCopyButton
       title="Copy to clipboard"
       ref={this.button}
       data-clipboard-text={this.props.text}
+      style={{
+        top: 0,
+        right: 0,
+      }}
     >
       <CopyIcon size="16" />
-    </button>
+    </StyledCopyButton>
   )
 }
 

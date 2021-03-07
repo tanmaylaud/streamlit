@@ -1,4 +1,4 @@
-# Copyright 2018-2020 Streamlit Inc.
+# Copyright 2018-2021 Streamlit Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,13 +23,13 @@ import tornado.web
 
 import streamlit.server.routes
 from streamlit import type_util
-from streamlit.delta_generator import NoValue
-from streamlit.delta_generator import _get_widget_ui_value
-from streamlit.elements import arrow_table
+from streamlit.elements.utils import register_widget, NoValue
 from streamlit.errors import StreamlitAPIException
 from streamlit.logger import get_logger
-from streamlit.proto.ComponentInstance_pb2 import ArgsDataframe
+from streamlit.proto.ArrowTable_pb2 import ArrowTable as ArrowTableProto
+from streamlit.proto.ComponentInstance_pb2 import SpecialArg
 from streamlit.proto.Element_pb2 import Element
+from streamlit.type_util import to_bytes
 
 LOGGER = get_logger(__name__)
 
@@ -44,7 +44,10 @@ class CustomComponent:
     """A Custom Component declaration."""
 
     def __init__(
-        self, name: str, path: Optional[str] = None, url: Optional[str] = None,
+        self,
+        name: str,
+        path: Optional[str] = None,
+        url: Optional[str] = None,
     ):
         if (path is None and url is None) or (path is not None and url is not None):
             raise StreamlitAPIException(
@@ -63,13 +66,21 @@ class CustomComponent:
         return os.path.abspath(self.path)
 
     def __call__(
-        self, *args, default: Any = None, key: Optional[str] = None, **kwargs,
+        self,
+        *args,
+        default: Any = None,
+        key: Optional[str] = None,
+        **kwargs,
     ) -> Any:
         """An alias for create_instance."""
         return self.create_instance(*args, default=default, key=key, **kwargs)
 
     def create_instance(
-        self, *args, default: Any = None, key: Optional[str] = None, **kwargs,
+        self,
+        *args,
+        default: Any = None,
+        key: Optional[str] = None,
+        **kwargs,
     ) -> Any:
         """Create a new instance of the component.
 
@@ -97,16 +108,57 @@ class CustomComponent:
         if len(args) > 0:
             raise MarshallComponentException(f"Argument '{args[0]}' needs a label")
 
-        args_json = {}
-        args_df = {}
-        for arg_name, arg_val in kwargs.items():
-            if type_util.is_dataframe_like(arg_val):
-                args_df[arg_name] = arg_val
+        try:
+            import pyarrow
+            from streamlit.elements import arrow_table
+        except ImportError:
+            import sys
+
+            if sys.version_info >= (3, 9):
+                raise StreamlitAPIException(
+                    """To use Custom Components in Streamlit, you need to install
+PyArrow. Unfortunately, PyArrow does not yet support Python 3.9.
+
+You can either switch to Python 3.8 with an environment manager like PyEnv, or stay on 3.9 by
+[installing Streamlit with conda](https://discuss.streamlit.io/t/note-installation-issues-with-python-3-9-and-streamlit/6946):
+
+`conda install -c conda-forge streamlit`
+
+"""
+                )
             else:
-                args_json[arg_name] = arg_val
+                raise StreamlitAPIException(
+                    """To use Custom Components in Streamlit, you need to install
+PyArrow. To do so locally:
+
+`pip install pyarrow`
+
+And if you're using Streamlit Sharing, add "pyarrow" to your requirements.txt."""
+                )
+
+        # In addition to the custom kwargs passed to the component, we also
+        # send the special 'default' and 'key' params to the component
+        # frontend.
+        all_args = dict(kwargs, **{"default": default, "key": key})
+
+        json_args = {}
+        special_args = []
+        for arg_name, arg_val in all_args.items():
+            if type_util.is_bytes_like(arg_val):
+                bytes_arg = SpecialArg()
+                bytes_arg.key = arg_name
+                bytes_arg.bytes = to_bytes(arg_val)
+                special_args.append(bytes_arg)
+            elif type_util.is_dataframe_like(arg_val):
+                dataframe_arg = SpecialArg()
+                dataframe_arg.key = arg_name
+                arrow_table.marshall(dataframe_arg.arrow_dataframe.data, arg_val)
+                special_args.append(dataframe_arg)
+            else:
+                json_args[arg_name] = arg_val
 
         try:
-            serialized_args_json = json.dumps(args_json)
+            serialized_json_args = json.dumps(json_args)
         except BaseException as e:
             raise MarshallComponentException(
                 "Could not convert component args to JSON", e
@@ -136,19 +188,15 @@ class CustomComponent:
             # If `key` is not None, we marshall the arguments *after*.
 
             def marshall_element_args():
-                element.component_instance.args_json = serialized_args_json
-                for key, value in args_df.items():
-                    new_args_dataframe = ArgsDataframe()
-                    new_args_dataframe.key = key
-                    arrow_table.marshall(new_args_dataframe.value.data, value)
-                    element.component_instance.args_dataframe.append(new_args_dataframe)
+                element.component_instance.json_args = serialized_json_args
+                element.component_instance.special_args.extend(special_args)
 
             if key is None:
                 marshall_element_args()
 
-            widget_value = _get_widget_ui_value(
+            widget_value = register_widget(
                 element_type="component_instance",
-                element=element,
+                element_proto=element.component_instance,
                 user_key=key,
                 widget_func_name=self.name,
             )
@@ -158,16 +206,20 @@ class CustomComponent:
 
             if widget_value is None:
                 widget_value = default
+            elif isinstance(widget_value, ArrowTableProto):
+                widget_value = arrow_table.arrow_proto_to_dataframe(widget_value)
 
             # widget_value will be either None or whatever the component's most
             # recent setWidgetValue value is. We coerce None -> NoValue,
-            # because that's what _enqueue_new_element_delta expects.
+            # because that's what DeltaGenerator._enqueue expects.
             return widget_value if widget_value is not None else NoValue
 
         # We currently only support writing to st._main, but this will change
         # when we settle on an improved API in a post-layout world.
-        result = streamlit._main._enqueue_new_element_delta(
-            marshall_element=marshall_component, delta_type="component"
+        element = Element()
+        return_value = marshall_component(element)
+        result = streamlit._main._enqueue(
+            "component_instance", element.component_instance, return_value
         )
 
         return result
@@ -190,7 +242,9 @@ class CustomComponent:
 
 
 def declare_component(
-    name: str, path: Optional[str] = None, url: Optional[str] = None,
+    name: str,
+    path: Optional[str] = None,
+    url: Optional[str] = None,
 ) -> CustomComponent:
     """Create and register a custom component.
 
@@ -366,7 +420,9 @@ class ComponentRegistry:
 
         if existing is not None and component != existing:
             LOGGER.warning(
-                "%s overriding previously-registered %s", component, existing,
+                "%s overriding previously-registered %s",
+                component,
+                existing,
             )
 
         LOGGER.debug("Registered component %s", component)
